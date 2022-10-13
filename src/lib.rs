@@ -1,3 +1,7 @@
+pub mod metrics;
+pub mod metrics_factory;
+pub mod types;
+
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }
