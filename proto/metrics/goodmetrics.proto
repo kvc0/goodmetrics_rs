@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.goodmetrics";
+option java_outer_classname = "MetricsProto";
+
+package goodmetrics;
+
+service Metrics {
+    rpc SendMetrics(MetricsRequest) returns (MetricsReply) {}
+}
+
+message MetricsRequest {
+    map<string, Dimension> shared_dimensions = 1;
+    repeated Datum metrics = 2;
+}
+
+message MetricsReply {
+}
+
+message Datum {
+    // You should use lowercase_snake_case for this.
+    // If you don't, you may be surprised to see lowercase_snake_case-ification in your database.
+    // 
+    // Use names like: service_operation
+    string metric = 1;
+    uint64 unix_nanos = 2;
+    map<string, Dimension> dimensions = 3;
+    map<string, Measurement> measurements = 4;
+}
+
+message Dimension {
+    oneof value {
+        string string = 1;
+        uint64 number = 2;
+        bool boolean = 3;
+    }
+}
+
+message Measurement {
+    oneof value {
+        int64 i64 = 1;
+        int32 i32 = 2;
+        double f64 = 4;
+        float f32 = 5;
+        StatisticSet statistic_set = 6;
+        Histogram histogram = 7;
+    }
+}
+
+message StatisticSet {
+    double minimum = 1;
+    double maximum = 2;
+    double samplesum = 3;
+    int64 samplecount = 4;
+}
+
+message Histogram {
+    map<int64, int64> buckets = 1;
+}
