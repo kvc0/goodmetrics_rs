@@ -4,7 +4,7 @@ use std::{
     time::Instant,
 };
 
-use crate::types::{Dimension, Measurement, Name};
+use crate::types::{Dimension, Distribution, Measurement, Name, Observation};
 
 // A Metrics encapsulates 1 unit of work.
 // It is a record of the interesting things that happened during that work.
@@ -33,13 +33,20 @@ where
     TBuildHasher: BuildHasher,
 {
     #[inline]
-    pub fn dimension(&mut self, name: Name, value: Dimension) {
-        self.dimensions.insert(name, value);
+    pub fn dimension(&mut self, name: impl Into<Name>, value: impl Into<Dimension>) {
+        self.dimensions.insert(name.into(), value.into());
     }
 
     #[inline]
-    pub fn measurement(&mut self, name: Name, value: Measurement) {
-        self.measurements.insert(name, value);
+    pub fn measurement(&mut self, name: impl Into<Name>, value: impl Into<Observation>) {
+        self.measurements
+            .insert(name.into(), Measurement::Observation(value.into()));
+    }
+
+    #[inline]
+    pub fn distribution(&mut self, name: impl Into<Name>, value: impl Into<Distribution>) {
+        self.measurements
+            .insert(name.into(), Measurement::Distribution(value.into()));
     }
 
     #[inline]
