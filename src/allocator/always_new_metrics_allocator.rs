@@ -1,9 +1,13 @@
 use std::{collections::HashMap, hash::BuildHasher, time::Instant};
 
-use crate::{metrics::Metrics, types::Name};
+use crate::{
+    metrics::{Metrics, MetricsBehavior},
+    types::Name,
+};
 
 use super::MetricsAllocator;
 
+#[derive(Default)]
 pub struct AlwaysNewMetricsAllocator {}
 impl<TBuildHasher> MetricsAllocator<TBuildHasher> for AlwaysNewMetricsAllocator
 where
@@ -16,6 +20,7 @@ where
             Instant::now(),
             HashMap::with_hasher(Default::default()),
             HashMap::with_hasher(Default::default()),
+            MetricsBehavior::Default as u32,
         )
     }
 
