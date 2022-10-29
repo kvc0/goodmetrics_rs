@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 #[derive(Debug)]
 pub enum Dimension {
     Str(&'static str),
@@ -10,6 +12,15 @@ pub enum Dimension {
 pub enum Name {
     Str(&'static str),
     String(String),
+}
+
+impl Display for Name {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Name::Str(s) => f.write_str(s),
+            Name::String(s) => f.write_str(s),
+        }
+    }
 }
 
 #[derive(Debug)]

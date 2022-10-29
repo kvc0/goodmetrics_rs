@@ -1,5 +1,6 @@
 use std::{
     collections::{self, HashMap},
+    fmt::Display,
     hash::BuildHasher,
     time::Instant,
 };
@@ -35,6 +36,21 @@ pub struct Metrics<TBuildHasher = collections::hash_map::RandomState> {
     behaviors: u32,
 }
 
+// Blanket implementation for any kind of metrics - T doesn't factor into the display
+impl<T> Display for Metrics<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{name}: {behaviors:#04b} {time:#?}, dimensions: {dimensions:#?}, measurements: {measurements:#?}",
+            name=self.metrics_name,
+            time=self.start_time,
+            behaviors=self.behaviors,
+            dimensions=self.dimensions,
+            measurements=self.measurements
+        )
+    }
+}
+
 impl<TBuildHasher> Metrics<TBuildHasher>
 where
     TBuildHasher: BuildHasher,
@@ -54,6 +70,11 @@ where
     pub fn distribution(&mut self, name: impl Into<Name>, value: impl Into<Distribution>) {
         self.measurements
             .insert(name.into(), Measurement::Distribution(value.into()));
+    }
+
+    #[inline]
+    pub fn name(&self) -> &Name {
+        &self.metrics_name
     }
 
     #[inline]
