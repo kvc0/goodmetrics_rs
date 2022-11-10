@@ -1,6 +1,6 @@
 use std::{
     mem::ManuallyDrop,
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut}, fmt::{Display, Debug, Pointer},
 };
 
 pub trait ReturnTarget<TRef> {
@@ -13,6 +13,24 @@ pub trait ReturnTarget<TRef> {
 pub struct ReturningRef<'a, TRef, TReturnTarget: ReturnTarget<TRef>> {
     return_target: &'a TReturnTarget,
     referent: ManuallyDrop<TRef>,
+}
+
+// Treat the ref as a transparent wrapper of the referent for Display purposes
+impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> Display for ReturningRef<'a, TRef, TReturnTarget> 
+  where TRef: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.referent.fmt(f)
+    }
+}
+
+// Treat the ref as a transparent wrapper of the referent for Debug purposes
+impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> Debug for ReturningRef<'a, TRef, TReturnTarget> 
+  where TRef: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.referent.fmt(f)
+    }
 }
 
 impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> ReturningRef<'a, TRef, TReturnTarget> {

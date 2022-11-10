@@ -1,30 +1,26 @@
-use std::hash::BuildHasher;
-
-use crate::allocator::MetricsAllocator;
+use std::fmt::Display;
 
 use super::Sink;
 
-struct LoggingSink {
+pub struct LoggingSink {
     log_level: log::Level,
 }
 
-impl<TMetricsAllocator, TBuildHasher> Sink<TMetricsAllocator, TBuildHasher> for LoggingSink
-where
-    TMetricsAllocator: MetricsAllocator<TBuildHasher>,
-    TBuildHasher: BuildHasher + core::fmt::Debug,
-{
+impl Default for LoggingSink {
+    fn default() -> Self {
+        Self { log_level: log::Level::Info }
+    }
+}
+
+impl<T> Sink<T> for LoggingSink where T: Display {
     fn accept(
         &self,
-        metrics_ref: crate::allocator::returning_reference::ReturningRef<
-            crate::metrics::Metrics<TBuildHasher>,
-            TMetricsAllocator,
-        >,
-    ) {
+        metrics_ref: T,
+    ) where T: Display {
         log::log!(
             self.log_level,
-            "recorded metrics for {}: {}",
-            metrics_ref.name(),
-            *metrics_ref
+            "Sunk: {}",
+            metrics_ref
         )
     }
 }
