@@ -1,22 +1,20 @@
-use std::{sync::Mutex, marker::PhantomData};
+use std::sync::Mutex;
 
 use super::Sink;
 
-pub struct SerializingSink<TSink, TSunk> where TSink : Sink<TSunk> {
+pub struct SerializingSink<TSink> {
     downstream: Mutex<TSink>,
-    _phantom: PhantomData<TSunk>,
 }
 
-impl <TSink, TSunk> SerializingSink<TSink, TSunk> where TSink : Sink<TSunk> {
+impl <TSink> SerializingSink<TSink> {
     pub fn new(downstream: TSink) -> Self {
         Self {
             downstream: Mutex::new(downstream),
-            _phantom: PhantomData::default(),
         }
     }
 }
 
-impl<TDownstream, TSunk> Sink<TSunk> for SerializingSink<TDownstream, TSunk> where TDownstream : Sink<TSunk> {
+impl<TDownstream, TSunk> Sink<TSunk> for SerializingSink<TDownstream> where TDownstream : Sink<TSunk> {
     fn accept(
         &self,
         to_sink: TSunk,

@@ -153,7 +153,7 @@ mod test {
     fn serializing_metrics_factory() {
         // todo:
         let metrics_factory = MetricsFactory::new_with_allocator(
-            LoggingSink::default(),
+            SerializingSink::new(LoggingSink::default()),
             &vec![MetricsBehavior::Default],
             AlwaysNewMetricsAllocator::default(),
         );
