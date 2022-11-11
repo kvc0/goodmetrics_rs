@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, time::Duration};
 
 #[derive(Debug)]
 pub enum Dimension {
@@ -183,5 +183,12 @@ impl From<Vec<u64>> for Distribution {
     #[inline]
     fn from(n: Vec<u64>) -> Self {
         Distribution::Collection(n)
+    }
+}
+
+impl From<Duration> for Distribution {
+    #[inline]
+    fn from(duration: Duration) -> Self {
+        Distribution::U64(duration.as_nanos() as u64)
     }
 }

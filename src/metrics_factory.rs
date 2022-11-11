@@ -28,7 +28,6 @@ where
             sink,
             &[
                 MetricsBehavior::Default,
-                MetricsBehavior::RecordTotalTime,
             ]
         )
     }
@@ -67,12 +66,14 @@ where
 
     // You should consider using record_scope() instead.
     #[inline]
-    pub fn emit(&self, metrics: Metrics) {
+    pub fn emit(&self, mut metrics: Metrics) {
         if metrics.has_behavior(MetricsBehavior::Suppress) {
             self.allocator.return_referent(metrics);
             return;
         }
-        if metrics.has_behavior(MetricsBehavior::RecordTotalTime) {}
+        if !metrics.has_behavior(MetricsBehavior::SuppressTotalTime) {
+            metrics.distribution("totaltime", metrics.start_time.elapsed());
+        }
         log::debug!("emit metrics: {:?}", metrics);
 
         let pipeline_ref = ReturningRef::new(&self.allocator, metrics);
@@ -128,7 +129,7 @@ impl<TSink, TMetricsAllocator> ReturnTarget<Metrics>
 
 #[cfg(test)]
 mod test {
-    use crate::{allocator::{always_new_metrics_allocator::AlwaysNewMetricsAllocator, returning_reference::ReturningRef}, pipeline::{serializing_sink::SerializingSink, logging_sink::LoggingSink}, metrics::{Metrics, MetricsBehavior}};
+    use crate::{allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator, pipeline::{serializing_sink::SerializingSink, logging_sink::LoggingSink}, metrics::{Metrics, MetricsBehavior}};
 
     use super::MetricsFactory;
 
@@ -151,7 +152,6 @@ mod test {
 
     #[test_log::test]
     fn serializing_metrics_factory() {
-        // todo:
         let metrics_factory = MetricsFactory::new_with_allocator(
             SerializingSink::new(LoggingSink::default()),
             &vec![MetricsBehavior::Default],
@@ -160,14 +160,5 @@ mod test {
         let mut metrics = metrics_factory.record_scope("test");
         // Dimension the scoped metrics
         metrics.dimension("some dimension", "a dim");
-
-        // Measure some plain number
-        metrics.measurement("measure", 13);
-
-        // Record 1 observation of a distribution
-        metrics.distribution("distribution of", 61);
-
-        // Record many observations of a distribution
-        metrics.distribution("high frequency", vec![13, 13, 14, 10, 13, 11, 13]);
     }
 }

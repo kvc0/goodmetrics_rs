@@ -9,7 +9,7 @@ use crate::types::{Dimension, Distribution, Measurement, Name, Observation};
 
 pub enum MetricsBehavior {
     Default = 0x00000000,
-    RecordTotalTime = 0x00000001,
+    SuppressTotalTime = 0x00000001,
     Suppress = 0x00000010,
 }
 
@@ -29,8 +29,8 @@ pub enum MetricsBehavior {
 // structure anything specially for Metrics. You just record what you want to.
 #[derive(Debug)]
 pub struct Metrics<TBuildHasher = collections::hash_map::RandomState> {
-    metrics_name: Name,
-    start_time: Instant,
+    pub(crate) metrics_name: Name,
+    pub(crate) start_time: Instant,
     dimensions: HashMap<Name, Dimension, TBuildHasher>,
     measurements: HashMap<Name, Measurement, TBuildHasher>,
     behaviors: u32,
