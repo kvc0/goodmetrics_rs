@@ -31,9 +31,9 @@ pub enum MetricsBehavior {
 pub struct Metrics<TBuildHasher = collections::hash_map::RandomState> {
     pub(crate) metrics_name: Name,
     pub(crate) start_time: Instant,
-    dimensions: HashMap<Name, Dimension, TBuildHasher>,
-    measurements: HashMap<Name, Measurement, TBuildHasher>,
-    behaviors: u32,
+    pub(crate) dimensions: HashMap<Name, Dimension, TBuildHasher>,
+    pub(crate) measurements: HashMap<Name, Measurement, TBuildHasher>,
+    pub(crate) behaviors: u32,
 }
 
 // Blanket implementation for any kind of metrics - T doesn't factor into the display

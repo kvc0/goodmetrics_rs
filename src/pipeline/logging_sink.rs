@@ -8,19 +8,20 @@ pub struct LoggingSink {
 
 impl Default for LoggingSink {
     fn default() -> Self {
-        Self { log_level: log::Level::Info }
+        Self {
+            log_level: log::Level::Info,
+        }
     }
 }
 
-impl<T> Sink<T> for LoggingSink where T: Display {
-    fn accept(
-        &self,
-        metrics_ref: T,
-    ) where T: Display {
-        log::log!(
-            self.log_level,
-            "Sunk: {}",
-            metrics_ref
-        )
+impl<T> Sink<T> for LoggingSink
+where
+    T: Display,
+{
+    fn accept(&self, metrics_ref: T)
+    where
+        T: Display,
+    {
+        log::log!(self.log_level, "Sunk: {}", metrics_ref)
     }
 }

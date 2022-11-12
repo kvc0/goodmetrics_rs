@@ -1,6 +1,6 @@
 use std::{fmt::Display, time::Duration};
 
-#[derive(Debug)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 pub enum Dimension {
     Str(&'static str),
     String(String),
@@ -8,7 +8,7 @@ pub enum Dimension {
     Boolean(bool),
 }
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Clone)]
 pub enum Name {
     Str(&'static str),
     String(String),
@@ -155,6 +155,19 @@ impl From<i64> for Distribution {
     #[inline]
     fn from(n: i64) -> Self {
         Distribution::I64(n)
+    }
+}
+
+impl From<Observation> for i64 {
+    fn from(o: Observation) -> Self {
+        match o {
+            Observation::I64(i) => i,
+            Observation::I32(i) => i.into(),
+            Observation::U64(u) => u as i64,
+            Observation::U32(u) => u.into(),
+            Observation::F64(f) => f as i64,
+            Observation::F32(f) => f as i64,
+        }
     }
 }
 

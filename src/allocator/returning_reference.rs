@@ -1,6 +1,7 @@
 use std::{
+    fmt::{Debug, Display},
     mem::ManuallyDrop,
-    ops::{Deref, DerefMut}, fmt::{Display, Debug, Pointer},
+    ops::{Deref, DerefMut},
 };
 
 pub trait ReturnTarget<TRef> {
@@ -16,8 +17,9 @@ pub struct ReturningRef<'a, TRef, TReturnTarget: ReturnTarget<TRef>> {
 }
 
 // Treat the ref as a transparent wrapper of the referent for Display purposes
-impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> Display for ReturningRef<'a, TRef, TReturnTarget> 
-  where TRef: Display,
+impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> Display for ReturningRef<'a, TRef, TReturnTarget>
+where
+    TRef: Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.referent.fmt(f)
@@ -25,8 +27,9 @@ impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> Display for ReturningRef<'a, T
 }
 
 // Treat the ref as a transparent wrapper of the referent for Debug purposes
-impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> Debug for ReturningRef<'a, TRef, TReturnTarget> 
-  where TRef: Debug,
+impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> Debug for ReturningRef<'a, TRef, TReturnTarget>
+where
+    TRef: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.referent.fmt(f)
@@ -63,6 +66,22 @@ impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> DerefMut
     #[inline]
     fn deref_mut(&mut self) -> &mut TRef {
         &mut self.referent
+    }
+}
+
+impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> AsMut<TRef>
+    for ReturningRef<'a, TRef, TReturnTarget>
+{
+    fn as_mut(&mut self) -> &mut TRef {
+        &mut self.referent
+    }
+}
+
+impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> AsRef<TRef>
+    for ReturningRef<'a, TRef, TReturnTarget>
+{
+    fn as_ref(&self) -> &TRef {
+        &self.referent
     }
 }
 

@@ -1,3 +1,4 @@
+pub mod aggregating_sink;
 pub mod logging_sink;
 pub mod serializing_sink;
 
