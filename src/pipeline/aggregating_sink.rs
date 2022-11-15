@@ -1,6 +1,6 @@
 use std::{
     cmp::{max, min},
-    collections::{BTreeMap, HashMap},
+    collections::{hash_map, BTreeMap, HashMap},
     sync::{
         mpsc::{self, Receiver, SyncSender},
         Mutex,
@@ -15,20 +15,20 @@ use crate::{
 use super::Sink;
 
 // User-named metrics
-type MetricsMap = HashMap<Name, DimensionedMeasurementsMap>;
+pub type MetricsMap = HashMap<Name, DimensionedMeasurementsMap>;
 // A metrics measurement family is grouped first by its dimension position
-type DimensionedMeasurementsMap = HashMap<DimensionPosition, MeasurementAggregationMap>;
+pub type DimensionedMeasurementsMap = HashMap<DimensionPosition, MeasurementAggregationMap>;
 // A dimension position is a unique set of dimensions.
 // If a measurement has (1) the same metric name, (2) the same dimensions and (3) the same measurement name as another measurement,
 // it is the same measurement and they should be aggregated together.
-type DimensionPosition = BTreeMap<Name, Dimension>;
+pub type DimensionPosition = BTreeMap<Name, Dimension>;
 // Within the dimension position there is a collection of named measurements; we'll store the aggregated view of these
-type MeasurementAggregationMap = HashMap<Name, Aggregation>;
+pub type MeasurementAggregationMap = HashMap<Name, Aggregation>;
 
-type Histogram = HashMap<i64, u64>;
+pub type Histogram = HashMap<i64, u64>;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct StatisticSet {
+pub struct StatisticSet {
     min: i64,
     max: i64,
     sum: i64,
@@ -65,8 +65,9 @@ impl HistogramAccumulate for Histogram {
     }
 }
 
+// For collecting and periodically reporting
 #[derive(Debug, PartialEq, Eq)]
-enum Aggregation {
+pub enum Aggregation {
     Histogram(Histogram),
     StatisticSet(StatisticSet),
 }
@@ -101,6 +102,21 @@ where
 
     pub fn new() -> Self {
         Self::new_with_bound(1024)
+    }
+
+    // Ensure that you don't tarry long in the drain callback. The aggregator is held up while you are draining.
+    // This is to keep overhead relatively low; I don't want to charge you map growth over and over at least for
+    // your bread and butter metrics.
+    // Just drain into your target type (for example, a metrics batch to send to a goodmetricsd server) within
+    // the callback. Send the request outside of this scope.
+    pub fn drain_into<TFunction, TReturn>(&self, drain_into: TFunction) -> TReturn
+    where
+        TFunction: FnOnce(hash_map::Drain<'_, Name, DimensionedMeasurementsMap>) -> TReturn,
+    {
+        let mut map = self.map.lock().expect("must be able to access metrics map");
+        let metrics_drain = map.drain();
+
+        drain_into(metrics_drain)
     }
 
     // Consume a thread to process metrics aggregation (async support will come separately)
@@ -243,6 +259,8 @@ mod test {
         types::{Dimension, Name, Observation},
     };
 
+    use super::DimensionedMeasurementsMap;
+
     #[test_log::test]
     fn test_bucket() {
         assert_eq!(1, bucket_10_2_sigfigs(1));
@@ -292,6 +310,37 @@ mod test {
             )]),
             *map,
         )
+    }
+
+    #[test_log::test]
+    fn test_draining() {
+        let sink: AggregatingSink<Box<Metrics>> = AggregatingSink::new();
+
+        sink.update_metrics_map(get_metrics("a", "dimension", "v", 22));
+        sink.update_metrics_map(get_metrics("a", "dimension", "v", 20));
+
+        let transformed: Vec<(Name, DimensionedMeasurementsMap)> =
+            sink.drain_into(|drain| drain.collect());
+        assert_eq!(
+            Vec::from([(
+                Name::from("test"),
+                HashMap::from([(
+                    BTreeMap::from([(Name::from("a"), Dimension::from("dimension"))]),
+                    HashMap::from([(
+                        Name::from("v"),
+                        Aggregation::StatisticSet(StatisticSet {
+                            min: 20,
+                            max: 22,
+                            sum: 42,
+                            count: 2
+                        })
+                    )])
+                )])
+            )]),
+            transformed,
+        );
+
+        assert_eq!(HashMap::from([]), *sink.map.lock().unwrap());
     }
 
     fn get_metrics(
