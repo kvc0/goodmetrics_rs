@@ -1,4 +1,9 @@
-use std::{collections::HashMap, hash::BuildHasher, time::Instant};
+use std::{
+    collections::{hash_map::RandomState, HashMap},
+    hash::BuildHasher,
+    marker::PhantomData,
+    time::Instant,
+};
 
 use crate::{
     metrics::{Metrics, MetricsBehavior},
@@ -7,9 +12,28 @@ use crate::{
 
 use super::MetricsAllocator;
 
-#[derive(Default)]
-pub struct AlwaysNewMetricsAllocator {}
-impl<TBuildHasher> MetricsAllocator<Box<Metrics<TBuildHasher>>> for AlwaysNewMetricsAllocator
+pub struct AlwaysNewMetricsAllocator<TBuildHasher = RandomState> {
+    _phantom: PhantomData<TBuildHasher>,
+}
+
+impl<T: BuildHasher> AlwaysNewMetricsAllocator<T> {
+    pub fn new() -> Self {
+        Self {
+            _phantom: Default::default(),
+        }
+    }
+}
+
+impl Default for AlwaysNewMetricsAllocator<RandomState> {
+    fn default() -> Self {
+        Self {
+            _phantom: Default::default(),
+        }
+    }
+}
+
+impl<TBuildHasher> MetricsAllocator<Box<Metrics<TBuildHasher>>>
+    for AlwaysNewMetricsAllocator<TBuildHasher>
 where
     TBuildHasher: BuildHasher + Default,
 {
