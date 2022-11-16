@@ -1,11 +1,11 @@
 use std::{
     cmp::{max, min},
     collections::{hash_map, BTreeMap, HashMap},
-    sync::{
-        mpsc::{self, Receiver, SyncSender},
-        Mutex,
-    },
+    sync::{mpsc::SyncSender, Mutex},
+    time::{Duration, Instant, SystemTime},
 };
+
+use futures_timer::Delay;
 
 use crate::{
     allocator::MetricsRef,
@@ -72,36 +72,21 @@ pub enum Aggregation {
     StatisticSet(StatisticSet),
 }
 
-pub struct AggregatingSink<TMetricsRef> {
+pub struct AggregatingSink {
     map: Mutex<MetricsMap>,
-    sender: SyncSender<TMetricsRef>,
-    receiver: Receiver<TMetricsRef>,
 }
 
-impl<TMetricsRef> Default for AggregatingSink<TMetricsRef>
-where
-    TMetricsRef: MetricsRef,
-{
+impl Default for AggregatingSink {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<TMetricsRef> AggregatingSink<TMetricsRef>
-where
-    TMetricsRef: MetricsRef,
-{
-    pub fn new_with_bound(bound: usize) -> Self {
-        let (sender, receiver) = mpsc::sync_channel(bound);
+impl AggregatingSink {
+    pub fn new() -> Self {
         AggregatingSink {
             map: Mutex::new(MetricsMap::default()),
-            sender,
-            receiver,
         }
-    }
-
-    pub fn new() -> Self {
-        Self::new_with_bound(1024)
     }
 
     // Ensure that you don't tarry long in the drain callback. The aggregator is held up while you are draining.
@@ -119,17 +104,50 @@ where
         drain_into(metrics_drain)
     }
 
-    // Consume a thread to process metrics aggregation (async support will come separately)
-    pub fn run_aggregator_forever(&self) {
-        while let Ok(sunk_metrics_ref) = self.receiver.recv() {
-            self.update_metrics_map(sunk_metrics_ref);
+    pub async fn drain_into_sender_forever<TMakeBatchFunction, TBatch>(
+        &self,
+        cadence: Duration,
+        sender: SyncSender<TBatch>,
+        make_batch: TMakeBatchFunction,
+    ) where
+        TMakeBatchFunction:
+            FnMut(hash_map::Drain<'_, Name, DimensionedMeasurementsMap>) -> TBatch + Copy,
+    {
+        // Try to align to some even column since the epoch. It helps make metrics better-aligned when systems have well-aligned clocks.
+        // It's usually more convenient in grafana this way.
+        let extra_start_offset = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("could not get system time")
+            .as_millis()
+            % cadence.as_millis();
+        let mut last_emit = Instant::now() + Duration::from_millis(extra_start_offset as u64);
+
+        loop {
+            let now = Instant::now();
+            let wait_for = if let Some(wait_for) = now.checked_duration_since(last_emit) {
+                last_emit += cadence;
+                wait_for
+            } else {
+                while None == now.checked_duration_since(last_emit) {
+                    last_emit += cadence;
+                }
+                Duration::ZERO
+            };
+            Delay::new(wait_for).await;
+
+            let batch = self.drain_into(make_batch);
+            match sender.try_send(batch) {
+                Ok(_) => {
+                    // Successfully sent
+                }
+                Err(error) => {
+                    log::error!("Failed to send metrics batch: {error}")
+                }
+            }
         }
     }
 
-    fn update_metrics_map(&self, mut sunk_metrics: TMetricsRef)
-    where
-        TMetricsRef: MetricsRef,
-    {
+    fn update_metrics_map(&self, mut sunk_metrics: impl MetricsRef) {
         let mut map = self.map.lock().expect("must be able to access metrics map");
         let dimensioned_measurements_map: &mut DimensionedMeasurementsMap =
             map.entry(sunk_metrics.metrics_name.clone()).or_default();
@@ -217,14 +235,12 @@ fn accumulate_statisticset(
     }
 }
 
-impl<TMetricsRef> Sink<TMetricsRef> for AggregatingSink<TMetricsRef> {
+impl<TMetricsRef> Sink<TMetricsRef> for AggregatingSink
+where
+    TMetricsRef: MetricsRef,
+{
     fn accept(&self, metrics_ref: TMetricsRef) {
-        match self.sender.try_send(metrics_ref) {
-            Ok(_) => {}
-            Err(error) => {
-                log::error!("could not send metrics to channel: {error}")
-            }
-        }
+        self.update_metrics_map(metrics_ref)
     }
 }
 
@@ -286,7 +302,7 @@ mod test {
 
     #[test_log::test]
     fn test_aggregation() {
-        let sink: AggregatingSink<Box<Metrics>> = AggregatingSink::new();
+        let sink: AggregatingSink = AggregatingSink::new();
 
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 22));
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 20));
@@ -314,7 +330,7 @@ mod test {
 
     #[test_log::test]
     fn test_draining() {
-        let sink: AggregatingSink<Box<Metrics>> = AggregatingSink::new();
+        let sink: AggregatingSink = AggregatingSink::new();
 
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 22));
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 20));

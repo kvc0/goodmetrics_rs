@@ -186,7 +186,7 @@ mod test {
 
     #[test_log::test]
     fn aggregating_metrics_factory() {
-        let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, AggregatingSink<_>> =
+        let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, AggregatingSink> =
             MetricsFactory::new_with_allocator(
                 AggregatingSink::new(),
                 &[MetricsBehavior::Default],
