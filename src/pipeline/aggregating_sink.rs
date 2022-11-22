@@ -94,14 +94,26 @@ impl AggregatingSink {
     // your bread and butter metrics.
     // Just drain into your target type (for example, a metrics batch to send to a goodmetricsd server) within
     // the callback. Send the request outside of this scope.
-    pub fn drain_into<TFunction, TReturn>(&self, drain_into: TFunction) -> TReturn
+    pub fn drain_into<DrainFunction, TReturn>(
+        &self,
+        timestamp: SystemTime,
+        duration: Duration,
+        drain_into: DrainFunction,
+    ) -> Option<TReturn>
     where
-        TFunction: FnOnce(hash_map::Drain<'_, Name, DimensionedMeasurementsMap>) -> TReturn,
+        DrainFunction: FnOnce(
+            SystemTime,
+            Duration,
+            hash_map::Drain<'_, Name, DimensionedMeasurementsMap>,
+        ) -> TReturn,
     {
         let mut map = self.map.lock().expect("must be able to access metrics map");
+        if map.len() < 1 {
+            return None;
+        }
         let metrics_drain = map.drain();
 
-        drain_into(metrics_drain)
+        Some(drain_into(timestamp, duration, metrics_drain))
     }
 
     pub async fn drain_into_sender_forever<TMakeBatchFunction, TBatch>(
@@ -110,8 +122,12 @@ impl AggregatingSink {
         sender: SyncSender<TBatch>,
         make_batch: TMakeBatchFunction,
     ) where
-        TMakeBatchFunction:
-            FnMut(hash_map::Drain<'_, Name, DimensionedMeasurementsMap>) -> TBatch + Copy,
+        TMakeBatchFunction: FnMut(
+                SystemTime,
+                Duration,
+                hash_map::Drain<'_, Name, DimensionedMeasurementsMap>,
+            ) -> TBatch
+            + Copy,
     {
         // Try to align to some even column since the epoch. It helps make metrics better-aligned when systems have well-aligned clocks.
         // It's usually more convenient in grafana this way.
@@ -120,28 +136,31 @@ impl AggregatingSink {
             .expect("could not get system time")
             .as_millis()
             % cadence.as_millis();
-        let mut last_emit = Instant::now() + Duration::from_millis(extra_start_offset as u64);
+        Delay::new(Duration::from_millis(extra_start_offset as u64)).await;
+        let mut last_emit = Instant::now();
 
         loop {
             let now = Instant::now();
-            let wait_for = if let Some(wait_for) = now.checked_duration_since(last_emit) {
+            let wait_for = if let Some(wait_for) = (last_emit + cadence).checked_duration_since(now)
+            {
                 last_emit += cadence;
                 wait_for
             } else {
-                while None == now.checked_duration_since(last_emit) {
+                while None == (last_emit + cadence).checked_duration_since(now) {
                     last_emit += cadence;
                 }
                 Duration::ZERO
             };
             Delay::new(wait_for).await;
 
-            let batch = self.drain_into(make_batch);
-            match sender.try_send(batch) {
-                Ok(_) => {
-                    // Successfully sent
-                }
-                Err(error) => {
-                    log::error!("Failed to send metrics batch: {error}")
+            if let Some(batch) = self.drain_into(SystemTime::now(), cadence, make_batch) {
+                match sender.try_send(batch) {
+                    Ok(_) => {
+                        // Successfully sent
+                    }
+                    Err(error) => {
+                        log::error!("Failed to send metrics batch: {error}")
+                    }
                 }
             }
         }
@@ -235,17 +254,39 @@ fn accumulate_statisticset(
     }
 }
 
-impl<TMetricsRef> Sink<TMetricsRef> for AggregatingSink
+// impl<TMetricsRef> Sink<TMetricsRef> for AggregatingSink
+// where
+//     TMetricsRef: MetricsRef,
+// {
+//     fn accept(&self, metrics_ref: TMetricsRef) {
+//         self.update_metrics_map(metrics_ref)
+//     }
+// }
+
+// impl<TMetricsRef> Sink<TMetricsRef> for &AggregatingSink
+// where
+//     TMetricsRef: MetricsRef,
+// {
+//     fn accept(&self, metrics_ref: TMetricsRef) {
+//         self.update_metrics_map(metrics_ref)
+//     }
+// }
+
+impl<TSink, TMetricsRef> Sink<TMetricsRef> for TSink
 where
+    TSink: AsRef<AggregatingSink>,
     TMetricsRef: MetricsRef,
 {
     fn accept(&self, metrics_ref: TMetricsRef) {
-        self.update_metrics_map(metrics_ref)
+        self.as_ref().update_metrics_map(metrics_ref)
     }
 }
 
-// Base 10 significant-figures bucketing
+// Base 10 significant-figures bucketing - toward 0
 fn bucket_10<const FIGURES: u32>(value: i64) -> i64 {
+    if value == 0 {
+        return 0
+    }
     // TODO: use i64.log10 when it's promoted to stable https://github.com/rust-lang/rust/issues/70887
     let power = ((value.abs() as f64).log10().ceil() as i32 - FIGURES as i32).max(0);
     let magnitude = 10_f64.powi(power);
@@ -258,19 +299,43 @@ fn bucket_10<const FIGURES: u32>(value: i64) -> i64 {
         * magnitude as i64
 }
 
-fn bucket_10_2_sigfigs(value: i64) -> i64 {
+// Base 10 significant-figures bucketing - toward -inf
+fn bucket_10_below<const FIGURES: u32>(value: i64) -> i64 {
+    if value == 0 {
+        return -1
+    }
+    // TODO: use i64.log10 when it's promoted to stable https://github.com/rust-lang/rust/issues/70887
+    let power = ((value.abs() as f64).log10().ceil() as i32 - FIGURES as i32).max(0);
+    let magnitude = 10_f64.powi(power);
+
+    (value.signum()
+        // -> truncate off magnitude by dividing it away
+        // -> ceil() away from 0 in both directions due to abs
+        * (value.abs() as f64 / magnitude).ceil() as i64 - 1)
+        // restore original magnitude raised to the next figure if necessary
+        * magnitude as i64
+}
+
+pub fn bucket_10_2_sigfigs(value: i64) -> i64 {
     bucket_10::<2>(value)
+}
+
+pub fn bucket_10_below_2_sigfigs(value: i64) -> i64 {
+    bucket_10_below::<2>(value)
 }
 
 #[cfg(test)]
 mod test {
-    use std::collections::{BTreeMap, HashMap};
+    use std::{
+        collections::{BTreeMap, HashMap},
+        time::{Duration, Instant, SystemTime},
+    };
 
     use crate::{
         allocator::{always_new_metrics_allocator::AlwaysNewMetricsAllocator, MetricsAllocator},
         metrics::Metrics,
         pipeline::aggregating_sink::{
-            bucket_10_2_sigfigs, AggregatingSink, Aggregation, StatisticSet,
+            bucket_10_2_sigfigs, AggregatingSink, Aggregation, StatisticSet, bucket_10_below_2_sigfigs,
         },
         types::{Dimension, Name, Observation},
     };
@@ -279,6 +344,7 @@ mod test {
 
     #[test_log::test]
     fn test_bucket() {
+        assert_eq!(0, bucket_10_2_sigfigs(0));
         assert_eq!(1, bucket_10_2_sigfigs(1));
         assert_eq!(-11, bucket_10_2_sigfigs(-11));
 
@@ -298,6 +364,29 @@ mod test {
         assert_eq!(-8800, bucket_10_2_sigfigs(-8799));
         assert_eq!(-8800, bucket_10_2_sigfigs(-8800));
         assert_eq!(-8900, bucket_10_2_sigfigs(-8801));
+    }
+
+    #[test_log::test]
+    fn test_bucket_below() {
+        assert_eq!(0, bucket_10_below_2_sigfigs(1));
+        assert_eq!(-12, bucket_10_below_2_sigfigs(-11));
+
+        assert_eq!(98, bucket_10_below_2_sigfigs(99));
+        assert_eq!(99, bucket_10_below_2_sigfigs(100));
+        assert_eq!(100, bucket_10_below_2_sigfigs(101));
+        assert_eq!(100, bucket_10_below_2_sigfigs(109));
+        assert_eq!(100, bucket_10_below_2_sigfigs(110));
+        assert_eq!(110, bucket_10_below_2_sigfigs(111));
+
+        assert_eq!(7900, bucket_10_below_2_sigfigs(8000));
+        assert_eq!(8700, bucket_10_below_2_sigfigs(8799));
+        assert_eq!(8700, bucket_10_below_2_sigfigs(8800));
+        assert_eq!(8800, bucket_10_below_2_sigfigs(8801));
+
+        assert_eq!(-8100, bucket_10_below_2_sigfigs(-8000));
+        assert_eq!(-8900, bucket_10_below_2_sigfigs(-8799));
+        assert_eq!(-8900, bucket_10_below_2_sigfigs(-8800));
+        assert_eq!(-9000, bucket_10_below_2_sigfigs(-8801));
     }
 
     #[test_log::test]
@@ -335,8 +424,11 @@ mod test {
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 22));
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 20));
 
-        let transformed: Vec<(Name, DimensionedMeasurementsMap)> =
-            sink.drain_into(|drain| drain.collect());
+        let transformed: Vec<(Name, DimensionedMeasurementsMap)> = sink
+            .drain_into(SystemTime::now(), Duration::from_secs(1), |_, _, drain| {
+                drain.collect()
+            })
+            .expect("there should be contents in the batch");
         assert_eq!(
             Vec::from([(
                 Name::from("test"),

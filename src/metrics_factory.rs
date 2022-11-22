@@ -139,6 +139,8 @@ where
 
 #[cfg(test)]
 mod test {
+    use std::rc::Rc;
+
     use crate::{
         allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator,
         metrics::MetricsBehavior,
@@ -186,9 +188,9 @@ mod test {
 
     #[test_log::test]
     fn aggregating_metrics_factory() {
-        let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, AggregatingSink> =
+        let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, Rc<AggregatingSink>> =
             MetricsFactory::new_with_allocator(
-                AggregatingSink::new(),
+                Rc::new(AggregatingSink::new()),
                 &[MetricsBehavior::Default],
                 AlwaysNewMetricsAllocator::default(),
             );

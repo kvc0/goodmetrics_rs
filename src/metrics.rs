@@ -73,6 +73,11 @@ where
     }
 
     #[inline]
+    pub fn time<'timer>(&'timer mut self, timer_name: impl Into<Name>) -> Timer<'timer, TBuildHasher> {
+        Timer::new(self, timer_name)
+    }
+
+    #[inline]
     pub fn name(&self) -> &Name {
         &self.metrics_name
     }
@@ -135,5 +140,43 @@ where
             measurements,
             behaviors,
         }
+    }
+}
+
+pub struct Timer<'timer, TBuildHasher> where TBuildHasher : BuildHasher {
+    start_time: Instant,
+    metrics: &'timer mut Metrics<TBuildHasher>,
+    name: Name,
+}
+
+impl <'timer, TBuildHasher> Drop for Timer<'timer, TBuildHasher> where TBuildHasher : BuildHasher {
+    fn drop(&mut self) {
+        self.metrics.distribution("timer", self.start_time.elapsed().as_micros() as u64)
+    }
+}
+
+impl<'timer, TBuildHasher> Timer<'timer, TBuildHasher> where TBuildHasher : BuildHasher {
+    pub fn new(metrics: &'timer mut Metrics<TBuildHasher>, timer_name: impl Into<Name>) -> Self {
+        Self {
+            start_time: Instant::now(),
+            metrics,
+            name: timer_name.into(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{time::Instant, collections::HashMap};
+
+    use crate::metrics::{Metrics, Timer};
+
+    #[test_log::test]
+    fn test_timer() {
+        let mut metrics = Metrics::new("name", Instant::now(), HashMap::from([]), HashMap::from([]), 0);
+        let _timer_1 = Timer::new(&mut metrics, "t1");
+
+        // metrics.dimension("a", "b");
+        // let _timer_2 = Timer::new(&mut metrics, "t2");
     }
 }
