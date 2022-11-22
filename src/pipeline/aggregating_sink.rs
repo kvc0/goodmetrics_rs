@@ -74,6 +74,7 @@ pub enum Aggregation {
 
 pub struct AggregatingSink {
     map: Mutex<MetricsMap>,
+    cached_position: Mutex<DimensionPosition>,
 }
 
 impl Default for AggregatingSink {
@@ -85,7 +86,8 @@ impl Default for AggregatingSink {
 impl AggregatingSink {
     pub fn new() -> Self {
         AggregatingSink {
-            map: Mutex::new(MetricsMap::default()),
+            map: Default::default(),
+            cached_position: Default::default(),
         }
     }
 
@@ -108,7 +110,7 @@ impl AggregatingSink {
         ) -> TReturn,
     {
         let mut map = self.map.lock().expect("must be able to access metrics map");
-        if map.len() < 1 {
+        if map.is_empty() {
             return None;
         }
         let metrics_drain = map.drain();
@@ -170,20 +172,30 @@ impl AggregatingSink {
         let mut map = self.map.lock().expect("must be able to access metrics map");
         let dimensioned_measurements_map: &mut DimensionedMeasurementsMap =
             map.entry(sunk_metrics.metrics_name.clone()).or_default();
-        let position: DimensionPosition = sunk_metrics.dimensions.drain().collect();
+        let (dimensions_drain, measurements_drain) = sunk_metrics.drain();
+
+        let mut cached_position = self
+            .cached_position
+            .lock()
+            .expect("must be able to access state");
+        cached_position.extend(dimensions_drain);
         let measurements_map: &mut MeasurementAggregationMap =
-            dimensioned_measurements_map.entry(position).or_default();
-        sunk_metrics
-            .measurements
-            .drain()
-            .for_each(|(name, measurement)| match measurement {
-                Measurement::Observation(observation) => {
-                    accumulate_statisticset(measurements_map, name, observation);
-                }
-                Measurement::Distribution(distribution) => {
-                    accumulate_distribution(measurements_map, name, distribution);
-                }
-            });
+            match dimensioned_measurements_map.get_mut(&cached_position) {
+                Some(map) => map,
+                None => dimensioned_measurements_map
+                    .entry(cached_position.clone())
+                    .or_default(),
+            };
+        cached_position.clear();
+        drop(cached_position);
+        measurements_drain.for_each(|(name, measurement)| match measurement {
+            Measurement::Observation(observation) => {
+                accumulate_statisticset(measurements_map, name, observation);
+            }
+            Measurement::Distribution(distribution) => {
+                accumulate_distribution(measurements_map, name, distribution);
+            }
+        });
     }
 }
 
@@ -285,7 +297,7 @@ where
 // Base 10 significant-figures bucketing - toward 0
 fn bucket_10<const FIGURES: u32>(value: i64) -> i64 {
     if value == 0 {
-        return 0
+        return 0;
     }
     // TODO: use i64.log10 when it's promoted to stable https://github.com/rust-lang/rust/issues/70887
     let power = ((value.abs() as f64).log10().ceil() as i32 - FIGURES as i32).max(0);
@@ -302,7 +314,7 @@ fn bucket_10<const FIGURES: u32>(value: i64) -> i64 {
 // Base 10 significant-figures bucketing - toward -inf
 fn bucket_10_below<const FIGURES: u32>(value: i64) -> i64 {
     if value == 0 {
-        return -1
+        return -1;
     }
     // TODO: use i64.log10 when it's promoted to stable https://github.com/rust-lang/rust/issues/70887
     let power = ((value.abs() as f64).log10().ceil() as i32 - FIGURES as i32).max(0);
@@ -328,14 +340,15 @@ pub fn bucket_10_below_2_sigfigs(value: i64) -> i64 {
 mod test {
     use std::{
         collections::{BTreeMap, HashMap},
-        time::{Duration, Instant, SystemTime},
+        time::{Duration, SystemTime},
     };
 
     use crate::{
         allocator::{always_new_metrics_allocator::AlwaysNewMetricsAllocator, MetricsAllocator},
         metrics::Metrics,
         pipeline::aggregating_sink::{
-            bucket_10_2_sigfigs, AggregatingSink, Aggregation, StatisticSet, bucket_10_below_2_sigfigs,
+            bucket_10_2_sigfigs, bucket_10_below_2_sigfigs, AggregatingSink, Aggregation,
+            StatisticSet,
         },
         types::{Dimension, Name, Observation},
     };
@@ -457,7 +470,7 @@ mod test {
         measurement_name: impl Into<Name>,
         measurement: impl Into<Observation>,
     ) -> Box<Metrics> {
-        let mut metrics = AlwaysNewMetricsAllocator::default().new_metrics("test");
+        let metrics = AlwaysNewMetricsAllocator::default().new_metrics("test");
         metrics.dimension(dimension_name, dimension);
         metrics.measurement(measurement_name, measurement);
         metrics

@@ -1,13 +1,14 @@
 use std::{
-    array,
-    collections::{hash_map, BinaryHeap, BTreeMap},
+    cmp::Reverse,
+    collections::{hash_map, BinaryHeap},
     sync::mpsc::Receiver,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH}, cmp::Reverse,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
     pipeline::aggregating_sink::{
-        Aggregation, DimensionPosition, DimensionedMeasurementsMap, Histogram, bucket_10_below_2_sigfigs,
+        bucket_10_below_2_sigfigs, Aggregation, DimensionPosition, DimensionedMeasurementsMap,
+        Histogram,
     },
     proto::opentelemetry::{
         self,
@@ -16,7 +17,8 @@ use crate::{
         },
         common::v1::{any_value::Value, AnyValue, InstrumentationScope, KeyValue},
         metrics::v1::{
-            AggregationTemporality, HistogramDataPoint, Metric, ResourceMetrics, ScopeMetrics, DataPointFlags,
+            AggregationTemporality, DataPointFlags, HistogramDataPoint, Metric, ResourceMetrics,
+            ScopeMetrics,
         },
     },
     types::{Dimension, Name},
@@ -132,12 +134,20 @@ impl From<Dimension> for AnyValue {
     }
 }
 
-fn as_otel_histogram(mut histogram: Histogram, timestamp: SystemTime, duration: Duration, attributes: Vec<KeyValue>) -> opentelemetry::metrics::v1::Histogram {
-    let timestamp_nanos = timestamp.duration_since(UNIX_EPOCH).expect("could not get system time").as_nanos() as u64;
+fn as_otel_histogram(
+    mut histogram: Histogram,
+    timestamp: SystemTime,
+    duration: Duration,
+    attributes: Vec<KeyValue>,
+) -> opentelemetry::metrics::v1::Histogram {
+    let timestamp_nanos = timestamp
+        .duration_since(UNIX_EPOCH)
+        .expect("could not get system time")
+        .as_nanos() as u64;
     let bucket_values_count = histogram.values().sum();
     // These 3 data structures could be grown and cached for reuse
     // We want this in min heap order, sorted by bucket
-    let mut histogram: BinaryHeap<Reverse<(i64, u64)>> = histogram.drain().map(|pair| Reverse(pair)).collect();
+    let mut histogram: BinaryHeap<Reverse<(i64, u64)>> = histogram.drain().map(Reverse).collect();
     let mut sorted_bounds: Vec<f64> = vec![];
     let mut sorted_counts: Vec<u64> = vec![];
     sorted_bounds.reserve(histogram.len());
@@ -154,11 +164,11 @@ fn as_otel_histogram(mut histogram: Histogram, timestamp: SystemTime, duration: 
                     sorted_bounds.push(below as f64);
                     sorted_counts.push(0);
                 }
-            },
+            }
             None => {
                 sorted_bounds.push(below as f64);
                 sorted_counts.push(0);
-            },
+            }
         };
         sorted_bounds.push(bucket as f64);
         sorted_counts.push(count);
@@ -172,21 +182,19 @@ fn as_otel_histogram(mut histogram: Histogram, timestamp: SystemTime, duration: 
     opentelemetry::metrics::v1::Histogram {
         // anything other than Delta is bugged by design. So yeah, opentelemetry metrics spec is bugged by design.
         aggregation_temporality: AggregationTemporality::Delta as i32,
-        data_points: vec![
-            HistogramDataPoint {
-                attributes: attributes,
-                start_time_unix_nano: timestamp_nanos - duration.as_nanos() as u64,
-                time_unix_nano: timestamp_nanos,
-                count: bucket_values_count,
-                explicit_bounds: sorted_bounds,
-                bucket_counts: sorted_counts,
-                exemplars: vec![], // just no.
-                flags: DataPointFlags::FlagNone as u32, // i don't send useless buckets
-                min: None, // just use the histogram...
-                max: None, // just use the histogram...
-                sum: None, // This is a bad bad field
-            }
-        ],
+        data_points: vec![HistogramDataPoint {
+            attributes,
+            start_time_unix_nano: timestamp_nanos - duration.as_nanos() as u64,
+            time_unix_nano: timestamp_nanos,
+            count: bucket_values_count,
+            explicit_bounds: sorted_bounds,
+            bucket_counts: sorted_counts,
+            exemplars: vec![],                      // just no.
+            flags: DataPointFlags::FlagNone as u32, // i don't send useless buckets
+            min: None,                              // just use the histogram...
+            max: None,                              // just use the histogram...
+            sum: None,                              // This is a bad bad field
+        }],
     }
 }
 
@@ -200,13 +208,15 @@ mod test {
     use hyper::{header::HeaderName, http::HeaderValue};
 
     use crate::{
+        allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator,
         downstream::{
             channel_connection::get_channel,
             opentelemetry_downstream::{
                 create_preaggregated_opentelemetry_batch, OpenTelemetryDownstream,
             },
         },
-        pipeline::aggregating_sink::AggregatingSink, metrics_factory::{MetricsFactory, RecordingScope}, allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator,
+        metrics_factory::{MetricsFactory, RecordingScope},
+        pipeline::aggregating_sink::AggregatingSink,
     };
 
     #[test_log::test(tokio::test)]
@@ -239,16 +249,24 @@ mod test {
         metrics_tasks.await;
     }
 
-//    #[ignore = "you can run this if you want but it's for sanity checking, not for continuous testing"]
+    //    #[ignore = "you can run this if you want but it's for sanity checking, not for continuous testing"]
     #[test_log::test(tokio::test)]
     async fn lightstep_demo() {
         let sink = Arc::new(AggregatingSink::new());
         let (sender, receiver) = mpsc::sync_channel(128);
 
-        let mut downstream =
-            OpenTelemetryDownstream::new(get_channel("https://ingest.lightstep.com", true, Some((HeaderName::from_static("lightstep-access-token"), HeaderValue::from_static("123")))).await.expect(
-                "i can make a channel to lightstep",
-            ));
+        let mut downstream = OpenTelemetryDownstream::new(
+            get_channel(
+                "https://ingest.lightstep.com",
+                true,
+                Some((
+                    HeaderName::from_static("lightstep-access-token"),
+                    HeaderValue::from_static("123"),
+                )),
+            )
+            .await
+            .expect("i can make a channel to lightstep"),
+        );
 
         let metrics_tasks = tokio::task::LocalSet::new();
         let task_sink = sink.clone();
@@ -262,18 +280,23 @@ mod test {
                 .await
         });
 
-        metrics_tasks
-            .spawn_local(async move { downstream.send_batches_forever(receiver).await });
+        metrics_tasks.spawn_local(async move { downstream.send_batches_forever(receiver).await });
 
         let sink_handle = sink.clone();
-        metrics_tasks.run_until(async move {
-            // let sink = sink_handle.as_ref();
-            let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, Arc<AggregatingSink>> = MetricsFactory::new(sink_handle);
-            let start = Instant::now();
-            while start.elapsed() < Duration::from_secs(600) {
-                let metrics = metrics_factory.record_scope("demo");
-                // metrics
-            }
-        }).await;
+        metrics_tasks
+            .run_until(async move {
+                // let sink = sink_handle.as_ref();
+                let metrics_factory: MetricsFactory<
+                    AlwaysNewMetricsAllocator,
+                    Arc<AggregatingSink>,
+                > = MetricsFactory::new(sink_handle);
+                let start = Instant::now();
+                while start.elapsed() < Duration::from_secs(600) {
+                    let metrics = metrics_factory.record_scope("demo");
+                    let _scope = metrics.time("timed delay");
+                    tokio::time::sleep(Duration::from_micros(123)).await;
+                }
+            })
+            .await;
     }
 }

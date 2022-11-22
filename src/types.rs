@@ -1,6 +1,6 @@
-use std::{fmt::Display, ops::Deref, time::Duration};
+use std::{fmt::Display, time::Duration};
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub enum Dimension {
     Str(&'static str),
     String(String),
@@ -15,10 +15,10 @@ pub enum Name {
 }
 
 impl Name {
-    pub fn as_str<'a>(&'a self) -> &'a str {
+    pub fn as_str(&self) -> &str {
         match self {
             Name::Str(s) => s,
-            Name::String(s) => &s,
+            Name::String(s) => s,
         }
     }
 }
@@ -27,7 +27,7 @@ impl From<Name> for String {
     fn from(name: Name) -> Self {
         match name {
             Name::Str(s) => s.to_owned(),
-            Name::String(s) => s.to_owned(),
+            Name::String(s) => s,
         }
     }
 }

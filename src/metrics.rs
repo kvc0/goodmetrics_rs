@@ -1,7 +1,9 @@
 use std::{
+    cell::UnsafeCell,
     collections::{self, HashMap},
     fmt::Display,
     hash::BuildHasher,
+    mem::ManuallyDrop,
     time::Instant,
 };
 
@@ -27,12 +29,16 @@ pub enum MetricsBehavior {
 // Your code is responsible for putting the details of interest into the
 // Metrics object as it encounters interesting details. You do not need to
 // structure anything specially for Metrics. You just record what you want to.
+//
+// Metrics objects should not be shared between threads. They are unsynchronized
+// and optimized solely for trying to balance overhead cost against observability
+// value.
 #[derive(Debug)]
 pub struct Metrics<TBuildHasher = collections::hash_map::RandomState> {
     pub(crate) metrics_name: Name,
     pub(crate) start_time: Instant,
-    pub(crate) dimensions: HashMap<Name, Dimension, TBuildHasher>,
-    pub(crate) measurements: HashMap<Name, Measurement, TBuildHasher>,
+    dimensions: UnsafeCell<HashMap<Name, Dimension, TBuildHasher>>,
+    measurements: UnsafeCell<HashMap<Name, Measurement, TBuildHasher>>,
     pub(crate) behaviors: u32,
 }
 
@@ -56,24 +62,55 @@ where
     TBuildHasher: BuildHasher,
 {
     #[inline]
-    pub fn dimension(&mut self, name: impl Into<Name>, value: impl Into<Dimension>) {
-        self.dimensions.insert(name.into(), value.into());
+    pub fn dimension(&self, name: impl Into<Name>, value: impl Into<Dimension>) {
+        unsafe {
+            // SAFETY: within this scope there are no other references to `dimensions`,
+            // so ours is effectively unique. I.e., given that there is a reference to self in
+            // the function signature, there can be no other mutable reference than that and/or this.
+            // We do not release this mutable reference to safe code, and rely on exploiting the
+            // following facts for interior mutability safety:
+            // * there can be no other mutable reference than possibly the one used to access this function (i.e., self is de-facto &mut).
+            // * every unsafe block in Metrics can only be executed synchronously (Metrics are not Sync).
+            // * no other code in Metrics can possibly be entered while in an unsafe block.
+            let mutable_dimensions = &mut *self.dimensions.get();
+            mutable_dimensions.insert(name.into(), value.into());
+        }
     }
 
     #[inline]
-    pub fn measurement(&mut self, name: impl Into<Name>, value: impl Into<Observation>) {
-        self.measurements
-            .insert(name.into(), Measurement::Observation(value.into()));
+    pub fn measurement(&self, name: impl Into<Name>, value: impl Into<Observation>) {
+        unsafe {
+            // SAFETY: within this scope there are no other references to `measurements`,
+            // so ours is effectively unique. I.e., given that there is a reference to self in
+            // the function signature, there can be no other mutable reference than that and/or this.
+            // We do not release this mutable reference to safe code, and rely on exploiting the
+            // following facts for interior mutability safety:
+            // * there can be no other mutable reference than possibly the one used to access this function (i.e., self is de-facto &mut).
+            // * every unsafe block in Metrics can only be executed synchronously (Metrics are not Sync).
+            // * no other code in Metrics can possibly be entered while in an unsafe block.
+            let mutable_measurements = &mut *self.measurements.get();
+            mutable_measurements.insert(name.into(), Measurement::Observation(value.into()));
+        }
     }
 
     #[inline]
-    pub fn distribution(&mut self, name: impl Into<Name>, value: impl Into<Distribution>) {
-        self.measurements
-            .insert(name.into(), Measurement::Distribution(value.into()));
+    pub fn distribution(&self, name: impl Into<Name>, value: impl Into<Distribution>) {
+        unsafe {
+            // SAFETY: within this scope there are no other references to `measurements`,
+            // so ours is effectively unique. I.e., given that there is a reference to self in
+            // the function signature, there can be no other mutable reference than that and/or this.
+            // We do not release this mutable reference to safe code, and rely on exploiting the
+            // following facts for interior mutability safety:
+            // * there can be no other mutable reference than possibly the one used to access this function (i.e., self is de-facto &mut).
+            // * every unsafe block in Metrics can only be executed synchronously (Metrics are not Sync).
+            // * no other code in Metrics can possibly be entered while in an unsafe block.
+            let mutable_measurements = &mut *self.measurements.get();
+            mutable_measurements.insert(name.into(), Measurement::Distribution(value.into()));
+        }
     }
 
     #[inline]
-    pub fn time<'timer>(&'timer mut self, timer_name: impl Into<Name>) -> Timer<'timer, TBuildHasher> {
+    pub fn time(&self, timer_name: impl Into<Name>) -> Timer<'_, TBuildHasher> {
         Timer::new(self, timer_name)
     }
 
@@ -85,8 +122,8 @@ where
     #[inline]
     pub fn restart(&mut self) {
         self.start_time = Instant::now();
-        self.dimensions.clear();
-        self.measurements.clear();
+        self.dimensions.get_mut().clear();
+        self.measurements.get_mut().clear();
     }
 
     /// do not report this metrics instance
@@ -125,8 +162,10 @@ where
         self.behaviors |= behavior
     }
 
+    /// You should be getting Metrics instances from a MetricsFactory, which will
+    /// be set up to send your recordings to wherever they're supposed to go.
     #[inline]
-    pub(crate) fn new(
+    pub fn new(
         name: impl Into<Name>,
         start_time: Instant,
         dimensions: HashMap<Name, Dimension, TBuildHasher>,
@@ -136,45 +175,93 @@ where
         Self {
             metrics_name: name.into(),
             start_time,
-            dimensions,
-            measurements,
+            dimensions: UnsafeCell::new(dimensions),
+            measurements: UnsafeCell::new(measurements),
             behaviors,
         }
     }
-}
 
-pub struct Timer<'timer, TBuildHasher> where TBuildHasher : BuildHasher {
-    start_time: Instant,
-    metrics: &'timer mut Metrics<TBuildHasher>,
-    name: Name,
-}
-
-impl <'timer, TBuildHasher> Drop for Timer<'timer, TBuildHasher> where TBuildHasher : BuildHasher {
-    fn drop(&mut self) {
-        self.metrics.distribution("timer", self.start_time.elapsed().as_micros() as u64)
+    pub fn drain(
+        &mut self,
+    ) -> (
+        collections::hash_map::Drain<Name, Dimension>,
+        collections::hash_map::Drain<Name, Measurement>,
+    ) {
+        (
+            self.dimensions.get_mut().drain(),
+            self.measurements.get_mut().drain(),
+        )
     }
 }
 
-impl<'timer, TBuildHasher> Timer<'timer, TBuildHasher> where TBuildHasher : BuildHasher {
-    pub fn new(metrics: &'timer mut Metrics<TBuildHasher>, timer_name: impl Into<Name>) -> Self {
+pub struct Timer<'timer, TBuildHasher>
+where
+    TBuildHasher: BuildHasher,
+{
+    start_time: Instant,
+    metrics: &'timer Metrics<TBuildHasher>,
+    name: ManuallyDrop<Name>,
+}
+
+impl<'timer, TBuildHasher> Drop for Timer<'timer, TBuildHasher>
+where
+    TBuildHasher: BuildHasher,
+{
+    fn drop(&mut self) {
+        self.metrics.distribution(
+            unsafe { ManuallyDrop::take(&mut self.name) },
+            self.start_time.elapsed().as_micros() as u64,
+        )
+    }
+}
+
+impl<'timer, TBuildHasher> Timer<'timer, TBuildHasher>
+where
+    TBuildHasher: BuildHasher,
+{
+    pub fn new(metrics: &'timer Metrics<TBuildHasher>, timer_name: impl Into<Name>) -> Self {
         Self {
             start_time: Instant::now(),
             metrics,
-            name: timer_name.into(),
+            name: ManuallyDrop::new(timer_name.into()),
         }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::{time::Instant, collections::HashMap};
+    use std::{collections::HashMap, time::Instant};
 
     use crate::metrics::{Metrics, Timer};
 
+    fn is_send(_o: impl Send) {}
+    // fn is_sync(o: impl Sync) {}
+
+    #[test]
+    fn metrics_are_send_but_not_sync() {
+        let metrics = Metrics::new(
+            "name",
+            Instant::now(),
+            HashMap::from([]),
+            HashMap::from([]),
+            0,
+        );
+        is_send(metrics);
+        // Metrics is a single-threaded thing and uses interior mutability. It is Send, but it is not Sync!
+        // let metrics = Metrics::new("name", Instant::now(), HashMap::from([]), HashMap::from([]), 0);
+        // is_sync(metrics);
+    }
+
     #[test_log::test]
     fn test_timer() {
-        let mut metrics = Metrics::new("name", Instant::now(), HashMap::from([]), HashMap::from([]), 0);
-        let _timer_1 = Timer::new(&mut metrics, "t1");
+        let metrics = Metrics::new(
+            "name",
+            Instant::now(),
+            HashMap::from([]),
+            HashMap::from([]),
+            0,
+        );
+        let _timer_1 = Timer::new(&metrics, "t1");
 
         // metrics.dimension("a", "b");
         // let _timer_2 = Timer::new(&mut metrics, "t2");

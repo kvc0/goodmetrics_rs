@@ -65,7 +65,7 @@ where
 
     // You should consider using record_scope() instead.
     #[inline]
-    fn emit(&self, mut metrics: TMetricsRef) {
+    fn emit(&self, metrics: TMetricsRef) {
         if metrics.has_behavior(MetricsBehavior::Suppress) {
             return;
         }
@@ -157,7 +157,7 @@ mod test {
     fn logging_metrics_factory() {
         let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, LoggingSink> =
             MetricsFactory::new(LoggingSink::default());
-        let mut metrics = metrics_factory.record_scope("test");
+        let metrics = metrics_factory.record_scope("test");
         // Dimension the scoped metrics
         metrics.dimension("some dimension", "a dim");
 
@@ -181,7 +181,7 @@ mod test {
             &[MetricsBehavior::Default],
             AlwaysNewMetricsAllocator::default(),
         );
-        let mut metrics = metrics_factory.record_scope("test");
+        let metrics = metrics_factory.record_scope("test");
         // Dimension the scoped metrics
         metrics.dimension("some dimension", "a dim");
     }
@@ -195,7 +195,7 @@ mod test {
                 AlwaysNewMetricsAllocator::default(),
             );
         {
-            let mut metrics = metrics_factory.record_scope("test");
+            let metrics = metrics_factory.record_scope("test");
             metrics.dimension("some dimension", "a dim");
         }
     }

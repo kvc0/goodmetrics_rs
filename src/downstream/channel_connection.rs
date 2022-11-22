@@ -1,6 +1,11 @@
 use std::{str::FromStr, sync::Arc};
 
-use hyper::{client::HttpConnector, http::{self, HeaderValue}, Body, Error, Request, Response, Uri, header::HeaderName};
+use hyper::{
+    client::HttpConnector,
+    header::HeaderName,
+    http::{self, HeaderValue},
+    Body, Error, Request, Response, Uri,
+};
 use tokio_rustls::rustls::{client::ServerCertVerifier, ClientConfig, RootCertStore};
 use tonic::body::BoxBody;
 use tower::{buffer::Buffer, util::BoxService, ServiceExt};
@@ -11,7 +16,7 @@ pub type ChannelType =
 pub async fn get_channel(
     endpoint: &str,
     insecure: bool,
-    header: Option<(HeaderName, HeaderValue)>
+    header: Option<(HeaderName, HeaderValue)>,
 ) -> Result<ChannelType, Box<dyn std::error::Error>> {
     let mut tls = ClientConfig::builder()
         .with_safe_defaults()
@@ -62,8 +67,8 @@ pub async fn get_channel(
             match &header {
                 Some((name, value)) => {
                     req.headers_mut().append(name, value.clone());
-                },
-                None => {},
+                }
+                None => {}
             };
 
             *req.uri_mut() = uri;
