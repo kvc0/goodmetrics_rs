@@ -14,17 +14,17 @@ pub struct MetricsFactory<TMetricsAllocator, TSink> {
     sink: TSink,
 }
 
-pub trait RecordingScope<TMetricsRef>: ReturnTarget<TMetricsRef>
+pub trait RecordingScope<'a, TMetricsRef: 'a>: ReturnTarget<'a, TMetricsRef>
 where
     Self: Sized,
 {
-    fn record_scope(&self, scope_name: impl Into<Name>) -> ReturningRef<'_, TMetricsRef, Self>;
+    fn record_scope(&'a self, scope_name: impl Into<Name>) -> ReturningRef<'a, TMetricsRef, Self>;
 
     fn record_scope_with_behavior(
-        &self,
+        &'a self,
         scope_name: impl Into<Name>,
         behavior: MetricsBehavior,
-    ) -> ReturningRef<'_, TMetricsRef, Self>;
+    ) -> ReturningRef<'a, TMetricsRef, Self>;
 
     fn emit(&self, metrics: TMetricsRef);
 
@@ -33,29 +33,41 @@ where
     /// You should strongly consider using record_scope() instead.
     /// You _must_ emit() the returned instance through this MetricsFactory instance
     /// or else you may leak memory, depending on the semantics of your allocator.
-    unsafe fn create_new_raw_metrics(&self, metrics_name: impl Into<Name>) -> TMetricsRef;
+    unsafe fn create_new_raw_metrics(&'a self, metrics_name: impl Into<Name>) -> TMetricsRef;
 }
 
-impl<TMetricsRef, TMetricsAllocator, TSink> RecordingScope<TMetricsRef>
+impl<'a, TMetricsRef, TMetricsAllocator, TSink> ReturnTarget<'a, TMetricsRef>
     for MetricsFactory<TMetricsAllocator, TSink>
 where
-    TMetricsRef: MetricsRef,
+    TMetricsRef: MetricsRef + 'a,
+    TMetricsAllocator: MetricsAllocator<'a, TMetricsRef> + Default,
     TSink: Sink<TMetricsRef>,
-    TMetricsAllocator: MetricsAllocator<TMetricsRef> + Default,
+{
+    fn return_referent(&self, to_return: TMetricsRef) {
+        self.emit(to_return);
+    }
+}
+
+impl<'a, TMetricsRef, TMetricsAllocator, TSink> RecordingScope<'a, TMetricsRef>
+    for MetricsFactory<TMetricsAllocator, TSink>
+where
+    TMetricsRef: MetricsRef + 'a,
+    TSink: Sink<TMetricsRef>,
+    TMetricsAllocator: MetricsAllocator<'a, TMetricsRef> + Default,
 {
     // The MetricsScope, when completed, records a `totaltime` in nanoseconds.
     #[inline]
-    fn record_scope(&self, scope_name: impl Into<Name>) -> ReturningRef<'_, TMetricsRef, Self> {
+    fn record_scope(&'a self, scope_name: impl Into<Name>) -> ReturningRef<'a, TMetricsRef, Self> {
         ReturningRef::new(self, unsafe { self.create_new_raw_metrics(scope_name) })
     }
 
     // The MetricsScope, when completed, records a `totaltime` in nanoseconds.
     #[inline]
     fn record_scope_with_behavior(
-        &self,
+        &'a self,
         scope_name: impl Into<Name>,
         behavior: MetricsBehavior,
-    ) -> ReturningRef<'_, TMetricsRef, Self> {
+    ) -> ReturningRef<'a, TMetricsRef, Self> {
         ReturningRef::new(self, unsafe {
             let mut m = self.create_new_raw_metrics(scope_name);
             m.add_behavior(behavior);
@@ -83,7 +95,7 @@ where
     /// You _must_ emit() the returned instance through this MetricsFactory instance
     /// or else you may leak memory, depending on the semantics of your allocator.
     #[inline]
-    unsafe fn create_new_raw_metrics(&self, metrics_name: impl Into<Name>) -> TMetricsRef {
+    unsafe fn create_new_raw_metrics(&'a self, metrics_name: impl Into<Name>) -> TMetricsRef {
         let mut m = self.allocator.new_metrics(metrics_name);
         m.set_raw_behavior(self.default_metrics_behavior);
         m
@@ -109,7 +121,7 @@ where
     ) -> Self {
         MetricsFactory {
             allocator,
-            default_metrics_behavior: behaviors.iter().fold(0, |i, behavior| i | *behavior as u32),
+            default_metrics_behavior: behaviors.iter().fold(0, |i, behavior| (i | (*behavior as u32)) ),
             sink,
         }
     }
@@ -122,18 +134,6 @@ where
 {
     fn default() -> Self {
         Self::new(Default::default())
-    }
-}
-
-impl<TMetricsRef, TMetricsAllocator, TSink> ReturnTarget<TMetricsRef>
-    for MetricsFactory<TMetricsAllocator, TSink>
-where
-    TMetricsRef: MetricsRef,
-    TMetricsAllocator: MetricsAllocator<TMetricsRef> + Default,
-    TSink: Sink<TMetricsRef>,
-{
-    fn return_referent(&self, to_return: TMetricsRef) {
-        self.emit(to_return);
     }
 }
 

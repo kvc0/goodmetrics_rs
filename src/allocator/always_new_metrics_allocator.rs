@@ -32,10 +32,10 @@ impl Default for AlwaysNewMetricsAllocator<RandomState> {
     }
 }
 
-impl<TBuildHasher> MetricsAllocator<Box<Metrics<TBuildHasher>>>
+impl<'a, TBuildHasher> MetricsAllocator<'a, Box<Metrics<TBuildHasher>>>
     for AlwaysNewMetricsAllocator<TBuildHasher>
 where
-    TBuildHasher: BuildHasher + Default,
+    TBuildHasher: BuildHasher + Default + 'a,
 {
     #[inline]
     fn new_metrics(&self, metrics_name: impl Into<Name>) -> Box<Metrics<TBuildHasher>> {

@@ -4,20 +4,24 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-pub trait ReturnTarget<TRef> {
-    fn return_referent(&self, to_return: TRef);
+pub trait ReturnTarget<'a, TRef>
+where
+    TRef: 'a,
+{
+    fn return_referent(&'a self, to_return: TRef);
 }
 
 // Delivers the referent back to the target when the reference is dropped.
 // You can use an object pool if you want to avoid allocations or you can
 // use the AlwaysNewMetricsAllocator if you do not fear the heap.
-pub struct ReturningRef<'a, TRef, TReturnTarget: ReturnTarget<TRef>> {
+pub struct ReturningRef<'a, TRef: 'a, TReturnTarget: ReturnTarget<'a, TRef>> {
     return_target: &'a TReturnTarget,
     referent: ManuallyDrop<TRef>,
 }
 
 // Treat the ref as a transparent wrapper of the referent for Display purposes
-impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> Display for ReturningRef<'a, TRef, TReturnTarget>
+impl<'a, TRef, TReturnTarget: ReturnTarget<'a, TRef>> Display
+    for ReturningRef<'a, TRef, TReturnTarget>
 where
     TRef: Display,
 {
@@ -27,7 +31,8 @@ where
 }
 
 // Treat the ref as a transparent wrapper of the referent for Debug purposes
-impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> Debug for ReturningRef<'a, TRef, TReturnTarget>
+impl<'a, TRef, TReturnTarget: ReturnTarget<'a, TRef>> Debug
+    for ReturningRef<'a, TRef, TReturnTarget>
 where
     TRef: Debug,
 {
@@ -36,7 +41,7 @@ where
     }
 }
 
-impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> ReturningRef<'a, TRef, TReturnTarget> {
+impl<'a, TRef, TReturnTarget: ReturnTarget<'a, TRef>> ReturningRef<'a, TRef, TReturnTarget> {
     #[inline]
     pub fn new(return_target: &'a TReturnTarget, referent: TRef) -> Self {
         Self {
@@ -51,7 +56,9 @@ impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> ReturningRef<'a, TRef, TReturn
     }
 }
 
-impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> Deref for ReturningRef<'a, TRef, TReturnTarget> {
+impl<'a, TRef, TReturnTarget: ReturnTarget<'a, TRef>> Deref
+    for ReturningRef<'a, TRef, TReturnTarget>
+{
     type Target = TRef;
 
     #[inline]
@@ -60,7 +67,7 @@ impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> Deref for ReturningRef<'a, TRe
     }
 }
 
-impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> DerefMut
+impl<'a, TRef, TReturnTarget: ReturnTarget<'a, TRef>> DerefMut
     for ReturningRef<'a, TRef, TReturnTarget>
 {
     #[inline]
@@ -69,7 +76,7 @@ impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> DerefMut
     }
 }
 
-impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> AsMut<TRef>
+impl<'a, TRef, TReturnTarget: ReturnTarget<'a, TRef>> AsMut<TRef>
     for ReturningRef<'a, TRef, TReturnTarget>
 {
     fn as_mut(&mut self) -> &mut TRef {
@@ -77,7 +84,7 @@ impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> AsMut<TRef>
     }
 }
 
-impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> AsRef<TRef>
+impl<'a, TRef, TReturnTarget: ReturnTarget<'a, TRef>> AsRef<TRef>
     for ReturningRef<'a, TRef, TReturnTarget>
 {
     fn as_ref(&self) -> &TRef {
@@ -85,7 +92,9 @@ impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> AsRef<TRef>
     }
 }
 
-impl<'a, TRef, TReturnTarget: ReturnTarget<TRef>> Drop for ReturningRef<'a, TRef, TReturnTarget> {
+impl<'a, TRef, TReturnTarget: ReturnTarget<'a, TRef>> Drop
+    for ReturningRef<'a, TRef, TReturnTarget>
+{
     #[inline]
     fn drop(&mut self) {
         // Transfer the referent to the return target for finalization or reuse.

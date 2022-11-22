@@ -9,6 +9,7 @@ use std::{
 
 use crate::types::{Dimension, Distribution, Measurement, Name, Observation};
 
+#[derive(Clone, Copy, Debug)]
 pub enum MetricsBehavior {
     Default = 0x00000000,
     SuppressTotalTime = 0x00000001,
@@ -210,7 +211,7 @@ where
     fn drop(&mut self) {
         self.metrics.distribution(
             unsafe { ManuallyDrop::take(&mut self.name) },
-            self.start_time.elapsed().as_micros() as u64,
+            self.start_time.elapsed(),
         )
     }
 }

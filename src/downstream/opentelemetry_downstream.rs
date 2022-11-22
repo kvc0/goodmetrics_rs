@@ -5,6 +5,8 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use futures_timer::Delay;
+
 use crate::{
     pipeline::aggregating_sink::{
         bucket_10_below_2_sigfigs, Aggregation, DimensionPosition, DimensionedMeasurementsMap,
@@ -42,7 +44,7 @@ impl OpenTelemetryDownstream {
     pub async fn send_batches_forever(&mut self, receiver: Receiver<Vec<Metric>>) {
         let interval = Duration::from_secs(1);
         loop {
-            match receiver.recv_timeout(interval) {
+            match receiver.try_recv() {
                 Ok(batch) => {
                     let future = self.client.export(ExportMetricsServiceRequest {
                         resource_metrics: vec![ResourceMetrics {
@@ -58,11 +60,24 @@ impl OpenTelemetryDownstream {
                             }],
                         }],
                     });
-                    let result = future.await;
-                    log::debug!("sent metrics: {result:?}");
+                    match future.await {
+                        Ok(success) => {
+                            if !success.metadata().is_empty() {
+                                log::error!("received trailers: {:?}", success.metadata());
+                            }
+                            log::debug!("sent metrics: {success:?}")
+                        }
+                        Err(err) => {
+                            if !err.metadata().is_empty() {
+                                log::error!("received trailers: {:?}", err.metadata());
+                            }
+                            log::error!("failed to send metrics: {err:?}")
+                        }
+                    };
                 }
                 Err(timeout) => {
                     log::info!("no metrics activity: {timeout}");
+                    Delay::new(interval).await;
                 }
             }
         }
@@ -208,7 +223,7 @@ mod test {
     use hyper::{header::HeaderName, http::HeaderValue};
 
     use crate::{
-        allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator,
+        allocator::{always_new_metrics_allocator::AlwaysNewMetricsAllocator, pooled_metrics_allocator::PooledMetricsAllocator},
         downstream::{
             channel_connection::get_channel,
             opentelemetry_downstream::{
@@ -247,56 +262,5 @@ mod test {
         sink_joiner.abort();
         downstream_joiner.abort();
         metrics_tasks.await;
-    }
-
-    //    #[ignore = "you can run this if you want but it's for sanity checking, not for continuous testing"]
-    #[test_log::test(tokio::test)]
-    async fn lightstep_demo() {
-        let sink = Arc::new(AggregatingSink::new());
-        let (sender, receiver) = mpsc::sync_channel(128);
-
-        let mut downstream = OpenTelemetryDownstream::new(
-            get_channel(
-                "https://ingest.lightstep.com",
-                true,
-                Some((
-                    HeaderName::from_static("lightstep-access-token"),
-                    HeaderValue::from_static("123"),
-                )),
-            )
-            .await
-            .expect("i can make a channel to lightstep"),
-        );
-
-        let metrics_tasks = tokio::task::LocalSet::new();
-        let task_sink = sink.clone();
-        metrics_tasks.spawn_local(async move {
-            task_sink
-                .drain_into_sender_forever(
-                    Duration::from_secs(1),
-                    sender,
-                    create_preaggregated_opentelemetry_batch,
-                )
-                .await
-        });
-
-        metrics_tasks.spawn_local(async move { downstream.send_batches_forever(receiver).await });
-
-        let sink_handle = sink.clone();
-        metrics_tasks
-            .run_until(async move {
-                // let sink = sink_handle.as_ref();
-                let metrics_factory: MetricsFactory<
-                    AlwaysNewMetricsAllocator,
-                    Arc<AggregatingSink>,
-                > = MetricsFactory::new(sink_handle);
-                let start = Instant::now();
-                while start.elapsed() < Duration::from_secs(600) {
-                    let metrics = metrics_factory.record_scope("demo");
-                    let _scope = metrics.time("timed delay");
-                    tokio::time::sleep(Duration::from_micros(123)).await;
-                }
-            })
-            .await;
     }
 }
