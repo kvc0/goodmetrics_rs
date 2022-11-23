@@ -1,9 +1,22 @@
-use std::{sync::{Arc, mpsc}, time::Duration};
+use std::{
+    sync::{mpsc, Arc},
+    time::Duration,
+};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use hyper::{header::HeaderName, http::HeaderValue};
 
-use goodmetrics::{pipeline::aggregating_sink::AggregatingSink, downstream::{opentelemetry_downstream::{OpenTelemetryDownstream, create_preaggregated_opentelemetry_batch}, channel_connection::get_channel}, metrics_factory::{MetricsFactory, RecordingScope}, allocator::pooled_metrics_allocator::PooledMetricsAllocator};
+use goodmetrics::{
+    allocator::pooled_metrics_allocator::PooledMetricsAllocator,
+    downstream::{
+        channel_connection::get_channel,
+        opentelemetry_downstream::{
+            create_preaggregated_opentelemetry_batch, OpenTelemetryDownstream,
+        },
+    },
+    metrics_factory::{MetricsFactory, RecordingScope},
+    pipeline::aggregating_sink::AggregatingSink,
+};
 use tokio::task::LocalSet;
 
 fn lightstep_demo(criterion: &mut Criterion) {
@@ -16,18 +29,26 @@ fn lightstep_demo(criterion: &mut Criterion) {
     // Configure downstream metrics thread tasks
     let task_sink = sink.clone();
     std::thread::spawn(move || {
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("should be able to make tokio runtime");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("should be able to make tokio runtime");
         runtime.block_on(async move {
             let channel = get_channel(
                 "https://ingest.lightstep.com",
                 true,
                 Some((
                     HeaderName::from_static("lightstep-access-token"),
-                    HeaderValue::from_static(option_env!("LIGHTSTEP_ACCESS_TOKEN").expect("you need to provide LIGHTSTEP_ACCESS_TOKEN")),
+                    HeaderValue::from_static(
+                        option_env!("LIGHTSTEP_ACCESS_TOKEN")
+                            .expect("you need to provide LIGHTSTEP_ACCESS_TOKEN"),
+                    ),
                 )),
-            ).await.expect("i can make a channel to lightstep");
+            )
+            .await
+            .expect("i can make a channel to lightstep");
             let mut downstream = OpenTelemetryDownstream::new(channel);
-    
+
             let metrics_tasks = LocalSet::new();
 
             metrics_tasks.spawn_local(async move {
@@ -36,7 +57,8 @@ fn lightstep_demo(criterion: &mut Criterion) {
                         Duration::from_secs(1),
                         sender,
                         create_preaggregated_opentelemetry_batch,
-                    ).await;
+                    )
+                    .await;
             });
             metrics_tasks.spawn_local(async move {
                 downstream.send_batches_forever(receiver).await;
@@ -47,7 +69,8 @@ fn lightstep_demo(criterion: &mut Criterion) {
     });
 
     // Prepare the application metrics (we only need the sink to make a factory - you can have a factory per thread if you want)
-    let metrics_factory: MetricsFactory<PooledMetricsAllocator, Arc<AggregatingSink>> = MetricsFactory::new(sink);
+    let metrics_factory: MetricsFactory<PooledMetricsAllocator, Arc<AggregatingSink>> =
+        MetricsFactory::new(sink);
 
     // Finally, run the application and record metrics
     criterion.bench_function("demo", |bencher| {

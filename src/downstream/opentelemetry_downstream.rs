@@ -65,14 +65,14 @@ impl OpenTelemetryDownstream {
                     });
                     match future.await {
                         Ok(success) => {
-                            if !success.metadata().is_empty() {
-                                log::error!("received trailers: {:?}", success.metadata());
-                            }
-                            log::debug!("sent metrics: {success:?}")
+                            log::info!("sent metrics: {success:?}");
                         }
                         Err(err) => {
                             if !err.metadata().is_empty() {
-                                log::error!("received trailers: {:?}", err.metadata());
+                                log::error!(
+                                    "failed to send metrics: {err}. Metadata: {:?}",
+                                    err.metadata()
+                                );
                             }
                             log::error!("failed to send metrics: {err:?}")
                         }
@@ -122,9 +122,13 @@ fn as_metrics(
                             unit: "1".into(),
                         }]
                     }
-                    Aggregation::StatisticSet(s) => {
-                        as_otel_statistic_set(s, &format!("{name}_{measurement_name}"), timestamp, duration, &otel_dimensions)
-                    },
+                    Aggregation::StatisticSet(s) => as_otel_statistic_set(
+                        s,
+                        &format!("{name}_{measurement_name}"),
+                        timestamp,
+                        duration,
+                        &otel_dimensions,
+                    ),
                 })
                 .collect::<Vec<Metric>>()
         })
@@ -159,7 +163,7 @@ fn as_otel_statistic_set(
     full_measurement_name: &str,
     timestamp: SystemTime,
     duration: Duration,
-    attributes: &Vec<KeyValue>,
+    attributes: &[KeyValue],
 ) -> Vec<opentelemetry::metrics::v1::Metric> {
     let timestamp_nanos = timestamp
         .duration_since(UNIX_EPOCH)
@@ -167,10 +171,38 @@ fn as_otel_statistic_set(
         .as_nanos() as u64;
     let start_nanos = timestamp_nanos - duration.as_nanos() as u64;
     vec![
-        statistic_set_component(full_measurement_name, timestamp_nanos, start_nanos, attributes, "min", statistic_set.min.into()),
-        statistic_set_component(full_measurement_name, timestamp_nanos, start_nanos, attributes, "max", statistic_set.max.into()),
-        statistic_set_component(full_measurement_name, timestamp_nanos, start_nanos, attributes, "sum", statistic_set.sum.into()),
-        statistic_set_component(full_measurement_name, timestamp_nanos, start_nanos, attributes, "count", statistic_set.count.into()),
+        statistic_set_component(
+            full_measurement_name,
+            timestamp_nanos,
+            start_nanos,
+            attributes,
+            "min",
+            statistic_set.min.into(),
+        ),
+        statistic_set_component(
+            full_measurement_name,
+            timestamp_nanos,
+            start_nanos,
+            attributes,
+            "max",
+            statistic_set.max.into(),
+        ),
+        statistic_set_component(
+            full_measurement_name,
+            timestamp_nanos,
+            start_nanos,
+            attributes,
+            "sum",
+            statistic_set.sum.into(),
+        ),
+        statistic_set_component(
+            full_measurement_name,
+            timestamp_nanos,
+            start_nanos,
+            attributes,
+            "count",
+            statistic_set.count.into(),
+        ),
     ]
 }
 
@@ -192,24 +224,39 @@ impl From<f64> for opentelemetry::metrics::v1::number_data_point::Value {
     }
 }
 
-fn statistic_set_component(full_measurement_name: &str, unix_nanos: u64, start_time_unix_nanos: u64, attributes: &Vec<KeyValue>, component: &str, value: opentelemetry::metrics::v1::number_data_point::Value) -> opentelemetry::metrics::v1::Metric {
+fn statistic_set_component(
+    full_measurement_name: &str,
+    unix_nanos: u64,
+    start_time_unix_nanos: u64,
+    attributes: &[KeyValue],
+    component: &str,
+    value: opentelemetry::metrics::v1::number_data_point::Value,
+) -> opentelemetry::metrics::v1::Metric {
     Metric {
         name: format!("{full_measurement_name}_{component}"),
-        data: Some(opentelemetry::metrics::v1::metric::Data::Sum(
-            Sum {
-                aggregation_temporality: THE_ONLY_SANE_TEMPORALITY,
-                is_monotonic: false,
-                data_points: vec![new_number_data_point(unix_nanos, start_time_unix_nanos, &attributes, value)],
-            }
-        )),
+        data: Some(opentelemetry::metrics::v1::metric::Data::Sum(Sum {
+            aggregation_temporality: THE_ONLY_SANE_TEMPORALITY,
+            is_monotonic: false,
+            data_points: vec![new_number_data_point(
+                unix_nanos,
+                start_time_unix_nanos,
+                attributes,
+                value,
+            )],
+        })),
         description: "".into(),
         unit: "1".into(),
     }
 }
 
-fn new_number_data_point(unix_nanos: u64, start_time_unix_nanos: u64, attributes: &Vec<KeyValue>, value: opentelemetry::metrics::v1::number_data_point::Value) -> opentelemetry::metrics::v1::NumberDataPoint {
+fn new_number_data_point(
+    unix_nanos: u64,
+    start_time_unix_nanos: u64,
+    attributes: &[KeyValue],
+    value: opentelemetry::metrics::v1::number_data_point::Value,
+) -> opentelemetry::metrics::v1::NumberDataPoint {
     opentelemetry::metrics::v1::NumberDataPoint {
-        attributes: attributes.clone(),
+        attributes: attributes.to_owned(),
         start_time_unix_nano: start_time_unix_nanos,
         time_unix_nano: unix_nanos,
         exemplars: vec![],

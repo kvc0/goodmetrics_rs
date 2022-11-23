@@ -121,7 +121,9 @@ where
     ) -> Self {
         MetricsFactory {
             allocator,
-            default_metrics_behavior: behaviors.iter().fold(0, |i, behavior| (i | (*behavior as u32)) ),
+            default_metrics_behavior: behaviors
+                .iter()
+                .fold(0, |i, behavior| (i | (*behavior as u32))),
             sink,
         }
     }

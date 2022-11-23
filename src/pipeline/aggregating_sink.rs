@@ -148,7 +148,7 @@ impl AggregatingSink {
                 last_emit += cadence;
                 wait_for
             } else {
-                while None == (last_emit + cadence).checked_duration_since(now) {
+                while (last_emit + cadence).checked_duration_since(now).is_none() {
                     last_emit += cadence;
                 }
                 Duration::ZERO
@@ -265,24 +265,6 @@ fn accumulate_statisticset(
         }
     }
 }
-
-// impl<TMetricsRef> Sink<TMetricsRef> for AggregatingSink
-// where
-//     TMetricsRef: MetricsRef,
-// {
-//     fn accept(&self, metrics_ref: TMetricsRef) {
-//         self.update_metrics_map(metrics_ref)
-//     }
-// }
-
-// impl<TMetricsRef> Sink<TMetricsRef> for &AggregatingSink
-// where
-//     TMetricsRef: MetricsRef,
-// {
-//     fn accept(&self, metrics_ref: TMetricsRef) {
-//         self.update_metrics_map(metrics_ref)
-//     }
-// }
 
 impl<TSink, TMetricsRef> Sink<TMetricsRef> for TSink
 where
