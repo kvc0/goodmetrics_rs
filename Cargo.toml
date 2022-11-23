@@ -2,6 +2,13 @@
 name = "goodmetrics"
 version = "1.0.0"
 edition = "2021"
+description = "Stackwise, dynamic workflow metrics recording - for services"
+license = "Apache-2.0"
+authors = ["kvc0"]
+readme = "README.md"
+repository = "https://github.com/kvc0/goodmetrics_rs"
+keywords = ["metrics", "goodmetrics", "service", "performance"]
+categories = ["web-programming", "development-tools::profiling"]
 
 [lib]
 bench = false
@@ -22,7 +29,7 @@ tonic = { version = "0.8", features = ["tls"] }
 prost = { version = "0.11" }
 hyper = { version = "0.14" }
 tower = { version = "0.4" }
-tokio-rustls = { version = "*", features = ["dangerous_configuration"] }
+tokio-rustls = { version = "0.23", features = ["dangerous_configuration"] }
 hyper-rustls = { version = "0.23", features = ["http2"] }
 
 object-pool = { version = "0.5" }
