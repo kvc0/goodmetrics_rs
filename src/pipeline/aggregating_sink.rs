@@ -29,10 +29,10 @@ pub type Histogram = HashMap<i64, u64>;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct StatisticSet {
-    min: i64,
-    max: i64,
-    sum: i64,
-    count: u64,
+    pub min: i64,
+    pub max: i64,
+    pub sum: i64,
+    pub count: u64,
 }
 impl Default for StatisticSet {
     fn default() -> Self {

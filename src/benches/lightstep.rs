@@ -51,9 +51,14 @@ fn lightstep_demo(criterion: &mut Criterion) {
 
     // Finally, run the application and record metrics
     criterion.bench_function("demo", |bencher| {
+        let mut i = 0_u64;
         bencher.iter(|| {
+            i += 1;
+
             let metrics = metrics_factory.record_scope("demo");
             let _scope = metrics.time("timed_delay");
+            metrics.measurement("ran", 1);
+            metrics.dimension("mod", i % 8);
         });
     });
 }

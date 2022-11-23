@@ -10,7 +10,7 @@ use futures_timer::Delay;
 use crate::{
     pipeline::aggregating_sink::{
         bucket_10_below_2_sigfigs, Aggregation, DimensionPosition, DimensionedMeasurementsMap,
-        Histogram,
+        Histogram, StatisticSet,
     },
     proto::opentelemetry::{
         self,
@@ -20,13 +20,16 @@ use crate::{
         common::v1::{any_value::Value, AnyValue, InstrumentationScope, KeyValue},
         metrics::v1::{
             AggregationTemporality, DataPointFlags, HistogramDataPoint, Metric, ResourceMetrics,
-            ScopeMetrics,
+            ScopeMetrics, Sum,
         },
     },
     types::{Dimension, Name},
 };
 
 use super::channel_connection::ChannelType;
+
+// anything other than Delta is bugged by design. So yeah, opentelemetry metrics spec is bugged by design.
+const THE_ONLY_SANE_TEMPORALITY: i32 = AggregationTemporality::Delta as i32;
 
 pub struct OpenTelemetryDownstream {
     client: MetricsServiceClient<ChannelType>,
@@ -119,7 +122,9 @@ fn as_metrics(
                             unit: "1".into(),
                         }]
                     }
-                    Aggregation::StatisticSet(_) => todo!(),
+                    Aggregation::StatisticSet(s) => {
+                        as_otel_statistic_set(s, &format!("{name}_{measurement_name}"), timestamp, duration, &otel_dimensions)
+                    },
                 })
                 .collect::<Vec<Metric>>()
         })
@@ -146,6 +151,70 @@ impl From<Dimension> for AnyValue {
                 Dimension::Boolean(b) => Value::BoolValue(b),
             }),
         }
+    }
+}
+
+fn as_otel_statistic_set(
+    statistic_set: StatisticSet,
+    full_measurement_name: &str,
+    timestamp: SystemTime,
+    duration: Duration,
+    attributes: &Vec<KeyValue>,
+) -> Vec<opentelemetry::metrics::v1::Metric> {
+    let timestamp_nanos = timestamp
+        .duration_since(UNIX_EPOCH)
+        .expect("could not get system time")
+        .as_nanos() as u64;
+    let start_nanos = timestamp_nanos - duration.as_nanos() as u64;
+    vec![
+        statistic_set_component(full_measurement_name, timestamp_nanos, start_nanos, attributes, "min", statistic_set.min.into()),
+        statistic_set_component(full_measurement_name, timestamp_nanos, start_nanos, attributes, "max", statistic_set.max.into()),
+        statistic_set_component(full_measurement_name, timestamp_nanos, start_nanos, attributes, "sum", statistic_set.sum.into()),
+        statistic_set_component(full_measurement_name, timestamp_nanos, start_nanos, attributes, "count", statistic_set.count.into()),
+    ]
+}
+
+impl From<i64> for opentelemetry::metrics::v1::number_data_point::Value {
+    fn from(i: i64) -> Self {
+        Self::AsInt(i)
+    }
+}
+
+impl From<u64> for opentelemetry::metrics::v1::number_data_point::Value {
+    fn from(i: u64) -> Self {
+        Self::AsInt(i as i64)
+    }
+}
+
+impl From<f64> for opentelemetry::metrics::v1::number_data_point::Value {
+    fn from(i: f64) -> Self {
+        Self::AsDouble(i)
+    }
+}
+
+fn statistic_set_component(full_measurement_name: &str, unix_nanos: u64, start_time_unix_nanos: u64, attributes: &Vec<KeyValue>, component: &str, value: opentelemetry::metrics::v1::number_data_point::Value) -> opentelemetry::metrics::v1::Metric {
+    Metric {
+        name: format!("{full_measurement_name}_{component}"),
+        data: Some(opentelemetry::metrics::v1::metric::Data::Sum(
+            Sum {
+                aggregation_temporality: THE_ONLY_SANE_TEMPORALITY,
+                is_monotonic: false,
+                data_points: vec![new_number_data_point(unix_nanos, start_time_unix_nanos, &attributes, value)],
+            }
+        )),
+        description: "".into(),
+        unit: "1".into(),
+    }
+}
+
+fn new_number_data_point(unix_nanos: u64, start_time_unix_nanos: u64, attributes: &Vec<KeyValue>, value: opentelemetry::metrics::v1::number_data_point::Value) -> opentelemetry::metrics::v1::NumberDataPoint {
+    opentelemetry::metrics::v1::NumberDataPoint {
+        attributes: attributes.clone(),
+        start_time_unix_nano: start_time_unix_nanos,
+        time_unix_nano: unix_nanos,
+        exemplars: vec![],
+        flags: DataPointFlags::FlagNone as u32,
+        value: Some(value),
     }
 }
 
@@ -195,8 +264,7 @@ fn as_otel_histogram(
     sorted_counts.push(0);
 
     opentelemetry::metrics::v1::Histogram {
-        // anything other than Delta is bugged by design. So yeah, opentelemetry metrics spec is bugged by design.
-        aggregation_temporality: AggregationTemporality::Delta as i32,
+        aggregation_temporality: THE_ONLY_SANE_TEMPORALITY,
         data_points: vec![HistogramDataPoint {
             attributes,
             start_time_unix_nano: timestamp_nanos - duration.as_nanos() as u64,
@@ -217,20 +285,16 @@ fn as_otel_histogram(
 mod test {
     use std::{
         sync::{mpsc, Arc},
-        time::{Duration, Instant},
+        time::Duration,
     };
 
-    use hyper::{header::HeaderName, http::HeaderValue};
-
     use crate::{
-        allocator::{always_new_metrics_allocator::AlwaysNewMetricsAllocator, pooled_metrics_allocator::PooledMetricsAllocator},
         downstream::{
             channel_connection::get_channel,
             opentelemetry_downstream::{
                 create_preaggregated_opentelemetry_batch, OpenTelemetryDownstream,
             },
         },
-        metrics_factory::{MetricsFactory, RecordingScope},
         pipeline::aggregating_sink::AggregatingSink,
     };
 
