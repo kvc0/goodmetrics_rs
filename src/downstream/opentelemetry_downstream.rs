@@ -276,6 +276,8 @@ fn as_otel_histogram(
         .expect("could not get system time")
         .as_nanos() as u64;
     let bucket_values_count = histogram.values().sum();
+    let bucket_values_min = *histogram.keys().min().unwrap_or(&0) as f64;
+    let bucket_values_max = *histogram.keys().max().unwrap_or(&0) as f64;
     // These 3 data structures could be grown and cached for reuse
     // We want this in min heap order, sorted by bucket
     let mut histogram: BinaryHeap<Reverse<(i64, u64)>> = histogram.drain().map(Reverse).collect();
@@ -321,9 +323,8 @@ fn as_otel_histogram(
             bucket_counts: sorted_counts,
             exemplars: vec![],                      // just no.
             flags: DataPointFlags::FlagNone as u32, // i don't send useless buckets
-            min: None,                              // just use the histogram...
-            max: None,                              // just use the histogram...
-            sum: None,                              // This is a bad bad field
+            min: bucket_values_min,                 // just use the histogram...
+            max: bucket_values_max,                 // just use the histogram...
         }],
     }
 }

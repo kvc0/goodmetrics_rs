@@ -12,6 +12,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    - run: ./install_protoc.sh
+    - uses: actions-rs/toolchain@v1
+      with:
+          toolchain: stable
+          override: true
     - name: Rustfmt
       run: cargo fmt -- --check
     - name: Clippy
