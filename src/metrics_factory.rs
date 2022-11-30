@@ -12,6 +12,7 @@ pub struct MetricsFactory<TMetricsAllocator, TSink> {
     allocator: TMetricsAllocator,
     default_metrics_behavior: u32,
     sink: TSink,
+    disabled: bool,
 }
 
 /// Cloning a MetricsFactory is not cheap. You should cache it per-thread rather
@@ -26,6 +27,7 @@ where
             allocator: self.allocator.clone(),
             default_metrics_behavior: self.default_metrics_behavior,
             sink: self.sink.clone(),
+            disabled: self.disabled,
         }
     }
 }
@@ -114,7 +116,16 @@ where
     unsafe fn create_new_raw_metrics(&'a self, metrics_name: impl Into<Name>) -> TMetricsRef {
         let mut m = self.allocator.new_metrics(metrics_name);
         m.set_raw_behavior(self.default_metrics_behavior);
+        if self.disabled {
+            m.add_behavior(MetricsBehavior::Suppress)
+        }
         m
+    }
+}
+
+impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
+    pub fn disable(&mut self) {
+        self.disabled = true
     }
 }
 
@@ -141,6 +152,7 @@ where
                 .iter()
                 .fold(0, |i, behavior| (i | (*behavior as u32))),
             sink,
+            disabled: false,
         }
     }
 }
@@ -214,12 +226,12 @@ mod test {
                 &[MetricsBehavior::Default],
                 AlwaysNewMetricsAllocator::default(),
             );
+        let cloned = metrics_factory.clone();
         {
             let metrics = metrics_factory.record_scope("test");
             metrics.dimension("some dimension", "a dim");
         }
 
-        let cloned = metrics_factory.clone();
         let _metrics_that_shares_the_sink = cloned.record_scope("scope_name");
     }
 }
