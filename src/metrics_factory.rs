@@ -14,6 +14,22 @@ pub struct MetricsFactory<TMetricsAllocator, TSink> {
     sink: TSink,
 }
 
+/// Cloning a MetricsFactory is not cheap. You should cache it per-thread rather
+/// than doing so to work around visibility issues.
+impl<TMetricsAllocator, TSink> Clone for MetricsFactory<TMetricsAllocator, TSink>
+where
+    TSink: Clone,
+    TMetricsAllocator: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            allocator: self.allocator.clone(),
+            default_metrics_behavior: self.default_metrics_behavior,
+            sink: self.sink.clone(),
+        }
+    }
+}
+
 pub trait RecordingScope<'a, TMetricsRef: 'a>: ReturnTarget<'a, TMetricsRef>
 where
     Self: Sized,
@@ -186,6 +202,8 @@ mod test {
         let metrics = metrics_factory.record_scope("test");
         // Dimension the scoped metrics
         metrics.dimension("some dimension", "a dim");
+
+        // metrics_factory.clone(); currently SerializingSink does not support cloning.
     }
 
     #[test_log::test]
@@ -200,5 +218,8 @@ mod test {
             let metrics = metrics_factory.record_scope("test");
             metrics.dimension("some dimension", "a dim");
         }
+
+        let cloned = metrics_factory.clone();
+        let _metrics_that_shares_the_sink = cloned.record_scope("scope_name");
     }
 }

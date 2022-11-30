@@ -12,6 +12,7 @@ use crate::{
 
 use super::MetricsAllocator;
 
+#[derive(Clone)]
 pub struct AlwaysNewMetricsAllocator<TBuildHasher = RandomState> {
     _phantom: PhantomData<TBuildHasher>,
 }

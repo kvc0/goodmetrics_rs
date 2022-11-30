@@ -15,12 +15,20 @@ use super::MetricsAllocator;
 
 pub struct PooledMetricsAllocator<TBuildHasher = RandomState> {
     pool: Pool<Metrics<TBuildHasher>>,
+    size: usize,
+}
+
+impl<TBuildHasher: BuildHasher + Default> Clone for PooledMetricsAllocator<TBuildHasher> {
+    fn clone(&self) -> Self {
+        Self::new(self.size)
+    }
 }
 
 impl<T: BuildHasher + Default> PooledMetricsAllocator<T> {
     pub fn new(size: usize) -> Self {
         Self {
             pool: Pool::new(size, Self::instantiate_metrics),
+            size,
         }
     }
 
