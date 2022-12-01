@@ -1,9 +1,9 @@
 use std::{
-    cell::UnsafeCell,
     collections::{self, HashMap},
     fmt::Display,
     hash::BuildHasher,
     mem::ManuallyDrop,
+    sync::Mutex,
     time::Instant,
 };
 
@@ -38,8 +38,8 @@ pub enum MetricsBehavior {
 pub struct Metrics<TBuildHasher = collections::hash_map::RandomState> {
     pub(crate) metrics_name: Name,
     pub(crate) start_time: Instant,
-    dimensions: UnsafeCell<HashMap<Name, Dimension, TBuildHasher>>,
-    measurements: UnsafeCell<HashMap<Name, Measurement, TBuildHasher>>,
+    dimensions: Mutex<HashMap<Name, Dimension, TBuildHasher>>,
+    measurements: Mutex<HashMap<Name, Measurement, TBuildHasher>>,
     pub(crate) behaviors: u32,
 }
 
@@ -64,50 +64,48 @@ where
 {
     #[inline]
     pub fn dimension(&self, name: impl Into<Name>, value: impl Into<Dimension>) {
-        unsafe {
-            // SAFETY: within this scope there are no other references to `dimensions`,
-            // so ours is effectively unique. I.e., given that there is a reference to self in
-            // the function signature, there can be no other mutable reference than that and/or this.
-            // We do not release this mutable reference to safe code, and rely on exploiting the
-            // following facts for interior mutability safety:
-            // * there can be no other mutable reference than possibly the one used to access this function (i.e., self is de-facto &mut).
-            // * every unsafe block in Metrics can only be executed synchronously (Metrics are not Sync).
-            // * no other code in Metrics can possibly be entered while in an unsafe block.
-            let mutable_dimensions = &mut *self.dimensions.get();
-            mutable_dimensions.insert(name.into(), value.into());
-        }
+        let mut mutable_dimensions = self.dimensions.lock().expect("Mutex was unable to lock!");
+        mutable_dimensions.insert(name.into(), value.into());
+    }
+
+    /// Prefer this when you have mut on Metrics. It's faster!
+    #[inline]
+    pub fn dimension_mut(&mut self, name: impl Into<Name>, value: impl Into<Dimension>) {
+        let mutable_dimensions = self
+            .dimensions
+            .get_mut()
+            .expect("Mutex was unable to lock!");
+        mutable_dimensions.insert(name.into(), value.into());
     }
 
     #[inline]
     pub fn measurement(&self, name: impl Into<Name>, value: impl Into<Observation>) {
-        unsafe {
-            // SAFETY: within this scope there are no other references to `measurements`,
-            // so ours is effectively unique. I.e., given that there is a reference to self in
-            // the function signature, there can be no other mutable reference than that and/or this.
-            // We do not release this mutable reference to safe code, and rely on exploiting the
-            // following facts for interior mutability safety:
-            // * there can be no other mutable reference than possibly the one used to access this function (i.e., self is de-facto &mut).
-            // * every unsafe block in Metrics can only be executed synchronously (Metrics are not Sync).
-            // * no other code in Metrics can possibly be entered while in an unsafe block.
-            let mutable_measurements = &mut *self.measurements.get();
-            mutable_measurements.insert(name.into(), Measurement::Observation(value.into()));
-        }
+        let mut mutable_measurements = self.measurements.lock().expect("Mutex was unable to lock!");
+        mutable_measurements.insert(name.into(), Measurement::Observation(value.into()));
+    }
+
+    #[inline]
+    pub fn measurement_mut(&mut self, name: impl Into<Name>, value: impl Into<Observation>) {
+        let mutable_measurements = self
+            .measurements
+            .get_mut()
+            .expect("Mutex was unable to lock!");
+        mutable_measurements.insert(name.into(), Measurement::Observation(value.into()));
     }
 
     #[inline]
     pub fn distribution(&self, name: impl Into<Name>, value: impl Into<Distribution>) {
-        unsafe {
-            // SAFETY: within this scope there are no other references to `measurements`,
-            // so ours is effectively unique. I.e., given that there is a reference to self in
-            // the function signature, there can be no other mutable reference than that and/or this.
-            // We do not release this mutable reference to safe code, and rely on exploiting the
-            // following facts for interior mutability safety:
-            // * there can be no other mutable reference than possibly the one used to access this function (i.e., self is de-facto &mut).
-            // * every unsafe block in Metrics can only be executed synchronously (Metrics are not Sync).
-            // * no other code in Metrics can possibly be entered while in an unsafe block.
-            let mutable_measurements = &mut *self.measurements.get();
-            mutable_measurements.insert(name.into(), Measurement::Distribution(value.into()));
-        }
+        let mut mutable_measurements = self.measurements.lock().expect("Mutex was unable to lock!");
+        mutable_measurements.insert(name.into(), Measurement::Distribution(value.into()));
+    }
+
+    #[inline]
+    pub fn distribution_mut(&mut self, name: impl Into<Name>, value: impl Into<Distribution>) {
+        let mutable_measurements = self
+            .measurements
+            .get_mut()
+            .expect("Mutex was unable to lock!");
+        mutable_measurements.insert(name.into(), Measurement::Distribution(value.into()));
     }
 
     #[inline]
@@ -123,8 +121,14 @@ where
     #[inline]
     pub fn restart(&mut self) {
         self.start_time = Instant::now();
-        self.dimensions.get_mut().clear();
-        self.measurements.get_mut().clear();
+        self.dimensions
+            .get_mut()
+            .expect("Mutex was unable to lock!")
+            .clear();
+        self.measurements
+            .get_mut()
+            .expect("Mutex was unable to lock!")
+            .clear();
     }
 
     /// do not report this metrics instance
@@ -176,8 +180,8 @@ where
         Self {
             metrics_name: name.into(),
             start_time,
-            dimensions: UnsafeCell::new(dimensions),
-            measurements: UnsafeCell::new(measurements),
+            dimensions: Mutex::new(dimensions),
+            measurements: Mutex::new(measurements),
             behaviors,
         }
     }
@@ -189,8 +193,14 @@ where
         collections::hash_map::Drain<Name, Measurement>,
     ) {
         (
-            self.dimensions.get_mut().drain(),
-            self.measurements.get_mut().drain(),
+            self.dimensions
+                .get_mut()
+                .expect("Mutex was unable to lock!")
+                .drain(),
+            self.measurements
+                .get_mut()
+                .expect("Mutex was unable to lock!")
+                .drain(),
         )
     }
 }
@@ -236,10 +246,10 @@ mod test {
     use crate::metrics::{Metrics, Timer};
 
     fn is_send(_o: impl Send) {}
-    // fn is_sync(o: impl Sync) {}
+    fn is_sync(_o: impl Sync) {}
 
     #[test]
-    fn metrics_are_send_but_not_sync() {
+    fn metrics_are_send_and_sync() {
         let metrics = Metrics::new(
             "name",
             Instant::now(),
@@ -248,9 +258,15 @@ mod test {
             0,
         );
         is_send(metrics);
-        // Metrics is a single-threaded thing and uses interior mutability. It is Send, but it is not Sync!
-        // let metrics = Metrics::new("name", Instant::now(), HashMap::from([]), HashMap::from([]), 0);
-        // is_sync(metrics);
+
+        let metrics = Metrics::new(
+            "name",
+            Instant::now(),
+            HashMap::from([]),
+            HashMap::from([]),
+            0,
+        );
+        is_sync(metrics);
     }
 
     #[test_log::test]
@@ -262,9 +278,9 @@ mod test {
             HashMap::from([]),
             0,
         );
-        let _timer_1 = Timer::new(&metrics, "t1");
-
-        // metrics.dimension("a", "b");
-        // let _timer_2 = Timer::new(&mut metrics, "t2");
+        let timer_1 = Timer::new(&metrics, "t1");
+        is_send(timer_1);
+        let timer_1 = Timer::new(&metrics, "t1");
+        is_sync(timer_1);
     }
 }
