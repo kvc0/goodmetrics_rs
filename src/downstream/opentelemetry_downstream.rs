@@ -351,10 +351,11 @@ mod test {
         let sink = Arc::new(AggregatingSink::new());
         let (sender, receiver) = mpsc::sync_channel(128);
 
-        let mut downstream =
-            OpenTelemetryDownstream::new(get_channel("localhost:6379", true, None).await.expect(
+        let mut downstream = OpenTelemetryDownstream::new(
+            get_channel("localhost:6379", || None, None).await.expect(
                 "i can make a channel to localhost even though it probably isn't listening",
-            ));
+            ),
+        );
 
         let metrics_tasks = tokio::task::LocalSet::new();
         let task_sink = sink.clone();

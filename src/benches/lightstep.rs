@@ -18,6 +18,7 @@ use goodmetrics::{
     pipeline::aggregating_sink::AggregatingSink,
 };
 use tokio::task::LocalSet;
+use tokio_rustls::rustls::{OwnedTrustAnchor, RootCertStore};
 
 fn lightstep_demo(criterion: &mut Criterion) {
     env_logger::builder().is_test(false).try_init().unwrap();
@@ -36,7 +37,19 @@ fn lightstep_demo(criterion: &mut Criterion) {
         runtime.block_on(async move {
             let channel = get_channel(
                 "https://ingest.lightstep.com",
-                true,
+                || {
+                    let mut store = RootCertStore::empty();
+                    store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(
+                        |trust_anchor| {
+                            OwnedTrustAnchor::from_subject_spki_name_constraints(
+                                trust_anchor.subject,
+                                trust_anchor.spki,
+                                trust_anchor.name_constraints,
+                            )
+                        },
+                    ));
+                    Some(store)
+                },
                 Some((
                     HeaderName::from_static("lightstep-access-token"),
                     HeaderValue::from_static(

@@ -13,19 +13,46 @@ use tower::{buffer::Buffer, util::BoxService, ServiceExt};
 pub type ChannelType =
     Buffer<BoxService<Request<BoxBody>, Response<Body>, Error>, Request<BoxBody>>;
 
-pub async fn get_channel(
+/// You can make an insecure connection by passing `|| { None }` to tls_trust.
+/// If you want to make a safer connection you can add your trust roots,
+/// for example:
+/// ```rust
+///  || {
+///     let mut store = tokio_rustls::rustls::RootCertStore::empty();
+///     store.add_server_trust_anchors(
+///         webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|trust_anchor| {
+///             tokio_rustls::rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+///                 trust_anchor.subject,
+///                 trust_anchor.spki,
+///                 trust_anchor.name_constraints
+///             )
+///         })
+///     );
+///     Some(store)
+/// }
+/// ;
+/// ```
+pub async fn get_channel<TrustFunction>(
     endpoint: &str,
-    insecure: bool,
+    tls_trust: TrustFunction,
     header: Option<(HeaderName, HeaderValue)>,
-) -> Result<ChannelType, Box<dyn std::error::Error>> {
-    let mut tls = ClientConfig::builder()
-        .with_safe_defaults()
-        .with_root_certificates(RootCertStore::empty())
-        .with_no_client_auth();
-    if insecure {
-        tls.dangerous()
-            .set_certificate_verifier(Arc::new(StupidVerifier {}));
-    }
+) -> Result<ChannelType, Box<dyn std::error::Error>>
+where
+    TrustFunction: FnOnce() -> Option<RootCertStore>,
+{
+    let tls = ClientConfig::builder().with_safe_defaults();
+    let tls = match tls_trust() {
+        Some(trust) => tls.with_root_certificates(trust).with_no_client_auth(),
+        None => {
+            let mut config = tls
+                .with_root_certificates(RootCertStore::empty())
+                .with_no_client_auth();
+            config
+                .dangerous()
+                .set_certificate_verifier(Arc::new(StupidVerifier {}));
+            config
+        }
+    };
 
     let mut http_connector = HttpConnector::new();
     http_connector.enforce_http(false);
