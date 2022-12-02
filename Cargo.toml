@@ -1,6 +1,6 @@
 [package]
 name = "goodmetrics"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2021"
 description = "Stackwise, dynamic workflow metrics recording - for services"
 license = "Apache-2.0"
