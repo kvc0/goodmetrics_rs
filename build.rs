@@ -5,7 +5,7 @@ fn main() {
     let _out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     tonic_build::configure()
         .build_server(false)
-        .type_attribute(".", "#[derive(serde::Deserialize, serde::Serialize, Eq)]")
+        .type_attribute(".", "#[derive()]")
         .compile(&["proto/metrics/goodmetrics.proto"], &["proto"])
         .unwrap();
 

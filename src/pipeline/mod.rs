@@ -1,7 +1,11 @@
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use futures::StreamExt;
 use futures_batch::ChunksTimeoutStreamExt;
+
+use crate::types::{self, Distribution};
+
+use self::aggregating_sink::bucket_10_2_sigfigs;
 
 pub mod aggregating_sink;
 pub mod logging_sink;
@@ -24,4 +28,42 @@ where
     futures::stream::iter(upstream)
         .chunks_timeout(batch_size, batch_timeout)
         .map(map_batch)
+}
+
+pub trait AbsorbDistribution {
+    fn absorb(&mut self, distribution: Distribution);
+}
+
+impl AbsorbDistribution for HashMap<i64, u64> {
+    fn absorb(&mut self, distribution: Distribution) {
+        match distribution {
+            types::Distribution::I64(i) => {
+                self.entry(bucket_10_2_sigfigs(i))
+                    .and_modify(|count| *count += 1)
+                    .or_insert(1);
+            }
+            types::Distribution::I32(i) => {
+                self.entry(bucket_10_2_sigfigs(i.into()))
+                    .and_modify(|count| *count += 1)
+                    .or_insert(1);
+            }
+            types::Distribution::U64(i) => {
+                self.entry(bucket_10_2_sigfigs(i as i64))
+                    .and_modify(|count| *count += 1)
+                    .or_insert(1);
+            }
+            types::Distribution::U32(i) => {
+                self.entry(bucket_10_2_sigfigs(i.into()))
+                    .and_modify(|count| *count += 1)
+                    .or_insert(1);
+            }
+            types::Distribution::Collection(collection) => {
+                collection.iter().for_each(|i| {
+                    self.entry(bucket_10_2_sigfigs(*i))
+                        .and_modify(|count| *count += 1)
+                        .or_insert(1);
+                });
+            }
+        };
+    }
 }

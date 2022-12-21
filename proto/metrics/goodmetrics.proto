@@ -52,9 +52,9 @@ message StatisticSet {
     double minimum = 1;
     double maximum = 2;
     double samplesum = 3;
-    int64 samplecount = 4;
+    uint64 samplecount = 4;
 }
 
 message Histogram {
-    map<int64, int64> buckets = 1;
+    map<int64, uint64> buckets = 1;
 }

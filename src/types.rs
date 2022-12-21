@@ -68,7 +68,20 @@ pub enum Distribution {
     // From<&[u8]> is not defined because it costs a copy.
     // Also, this unconditionally uses the global allocator.
     // PR to plumb the allocator type out would be welcome.
-    Collection(Vec<u64>),
+    Collection(Vec<i64>),
+}
+
+impl From<&Observation> for f64 {
+    fn from(value: &Observation) -> Self {
+        match value {
+            Observation::I64(n) => *n as f64,
+            Observation::I32(n) => *n as f64,
+            Observation::U64(n) => *n as f64,
+            Observation::U32(n) => *n as f64,
+            Observation::F64(n) => *n,
+            Observation::F32(n) => *n as f64,
+        }
+    }
 }
 
 impl From<&'static str> for Name {
@@ -210,9 +223,9 @@ impl From<u32> for Distribution {
     }
 }
 
-impl From<Vec<u64>> for Distribution {
+impl From<Vec<i64>> for Distribution {
     #[inline]
-    fn from(n: Vec<u64>) -> Self {
+    fn from(n: Vec<i64>) -> Self {
         Distribution::Collection(n)
     }
 }

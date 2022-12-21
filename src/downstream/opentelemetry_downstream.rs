@@ -26,7 +26,7 @@ use crate::{
     types::{Dimension, Name},
 };
 
-use super::channel_connection::ChannelType;
+use super::{channel_connection::ChannelType, EpochTime};
 
 // anything other than Delta is bugged by design. So yeah, opentelemetry metrics spec is bugged by design.
 const THE_ONLY_SANE_TEMPORALITY: i32 = AggregationTemporality::Delta as i32;
@@ -271,10 +271,7 @@ fn as_otel_histogram(
     duration: Duration,
     attributes: Vec<KeyValue>,
 ) -> opentelemetry::metrics::v1::Histogram {
-    let timestamp_nanos = timestamp
-        .duration_since(UNIX_EPOCH)
-        .expect("could not get system time")
-        .as_nanos() as u64;
+    let timestamp_nanos = timestamp.nanos_since_epoch();
     let bucket_values_count = histogram.values().sum();
     let bucket_values_min = *histogram.keys().min().unwrap_or(&0) as f64;
     let bucket_values_max = *histogram.keys().max().unwrap_or(&0) as f64;

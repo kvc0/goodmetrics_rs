@@ -14,8 +14,8 @@ categories = ["web-programming", "development-tools::profiling"]
 bench = false
 
 [[bench]]
-name = "lightstep"
-path = "src/benches/lightstep.rs"
+name = "benches"
+path = "src/benches/mod.rs"
 harness = false
 
 [dependencies]

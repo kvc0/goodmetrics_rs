@@ -12,7 +12,7 @@ use crate::{
     types::{self, Dimension, Measurement, Name},
 };
 
-use super::Sink;
+use super::{AbsorbDistribution, Sink};
 
 // User-named metrics
 pub type MetricsMap = HashMap<Name, DimensionedMeasurementsMap>;
@@ -158,7 +158,7 @@ impl AggregatingSink {
             if let Some(batch) = self.drain_into(SystemTime::now(), cadence, make_batch) {
                 match sender.try_send(batch) {
                     Ok(_) => {
-                        // Successfully sent
+                        log::info!("sent batch to sink")
                     }
                     Err(error) => {
                         log::error!("Failed to send metrics batch: {error}")
@@ -211,42 +211,7 @@ fn accumulate_distribution(
         Aggregation::StatisticSet(_s) => {
             log::error!("conflicting measurement and distribution name")
         }
-        Aggregation::Histogram(histogram) => {
-            match distribution {
-                types::Distribution::I64(i) => {
-                    histogram
-                        .entry(bucket_10_2_sigfigs(i))
-                        .and_modify(|count| *count += 1)
-                        .or_insert(1);
-                }
-                types::Distribution::I32(i) => {
-                    histogram
-                        .entry(bucket_10_2_sigfigs(i.into()))
-                        .and_modify(|count| *count += 1)
-                        .or_insert(1);
-                }
-                types::Distribution::U64(i) => {
-                    histogram
-                        .entry(bucket_10_2_sigfigs(i as i64))
-                        .and_modify(|count| *count += 1)
-                        .or_insert(1);
-                }
-                types::Distribution::U32(i) => {
-                    histogram
-                        .entry(bucket_10_2_sigfigs(i.into()))
-                        .and_modify(|count| *count += 1)
-                        .or_insert(1);
-                }
-                types::Distribution::Collection(collection) => {
-                    collection.iter().for_each(|i| {
-                        histogram
-                            .entry(bucket_10_2_sigfigs(*i as i64))
-                            .and_modify(|count| *count += 1)
-                            .or_insert(1);
-                    });
-                }
-            };
-        }
+        Aggregation::Histogram(histogram) => histogram.absorb(distribution),
     }
 }
 

@@ -8,6 +8,9 @@ pub mod types;
 // opentelemetry uses poor enum variant names
 #[allow(clippy::enum_variant_names)]
 pub(crate) mod proto {
+    pub mod goodmetrics {
+        tonic::include_proto!("goodmetrics");
+    }
     pub mod opentelemetry {
         pub mod collector {
             pub mod metrics {

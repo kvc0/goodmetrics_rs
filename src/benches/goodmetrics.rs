@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     sync::{mpsc, Arc},
     time::Duration,
 };
@@ -10,18 +11,19 @@ use goodmetrics::{
     allocator::pooled_metrics_allocator::PooledMetricsAllocator,
     downstream::{
         channel_connection::get_channel,
-        opentelemetry_downstream::{
-            create_preaggregated_opentelemetry_batch, OpenTelemetryDownstream,
-        },
+        goodmetrics_downstream::{create_preaggregated_goodmetrics_batch, GoodmetricsDownstream},
     },
     metrics_factory::{MetricsFactory, RecordingScope},
     pipeline::aggregating_sink::AggregatingSink,
 };
 use tokio::task::LocalSet;
-use tokio_rustls::rustls::{OwnedTrustAnchor, RootCertStore};
 
-pub fn lightstep_demo(criterion: &mut Criterion) {
+pub fn goodmetrics_demo(criterion: &mut Criterion) {
     env_logger::builder().is_test(false).try_init().unwrap();
+    let auth = option_env!("GOODMETRICS_AUTH").unwrap_or("none");
+    let endpoint = option_env!("GOODMETRICS_SERVER").expect(
+        "You need to provide a GOODMETRICS_SERVER=https://1.2.3.4:5678 environment variable",
+    );
 
     // Set up the bridge between application metrics threads and the metrics downstream thread
     let sink = Arc::new(AggregatingSink::new());
@@ -36,31 +38,19 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
             .expect("should be able to make tokio runtime");
         runtime.block_on(async move {
             let channel = get_channel(
-                "https://ingest.lightstep.com",
-                || {
-                    let mut store = RootCertStore::empty();
-                    store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(
-                        |trust_anchor| {
-                            OwnedTrustAnchor::from_subject_spki_name_constraints(
-                                trust_anchor.subject,
-                                trust_anchor.spki,
-                                trust_anchor.name_constraints,
-                            )
-                        },
-                    ));
-                    Some(store)
-                },
+                endpoint,
+                || None,
                 Some((
-                    HeaderName::from_static("lightstep-access-token"),
-                    HeaderValue::from_static(
-                        option_env!("LIGHTSTEP_ACCESS_TOKEN")
-                            .expect("you need to provide LIGHTSTEP_ACCESS_TOKEN"),
-                    ),
+                    HeaderName::from_static("authorization"),
+                    HeaderValue::try_from(auth).expect("invalid authorization value"),
                 )),
             )
             .await
-            .expect("i can make a channel to lightstep");
-            let mut downstream = OpenTelemetryDownstream::new(channel);
+            .expect("i can make a channel to goodmetrics");
+            let mut downstream = GoodmetricsDownstream::new(
+                channel,
+                HashMap::from_iter(vec![("application".to_string(), "bench".to_string())]),
+            );
 
             let metrics_tasks = LocalSet::new();
 
@@ -69,7 +59,7 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
                     .drain_into_sender_forever(
                         Duration::from_secs(1),
                         sender,
-                        create_preaggregated_opentelemetry_batch,
+                        create_preaggregated_goodmetrics_batch,
                     )
                     .await;
             });
@@ -86,7 +76,7 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
         MetricsFactory::new(sink);
 
     // Finally, run the application and record metrics
-    criterion.bench_function("lightstep", |bencher| {
+    criterion.bench_function("goodmetrics", |bencher| {
         let mut i = 0_u64;
         bencher.iter(|| {
             i += 1;
