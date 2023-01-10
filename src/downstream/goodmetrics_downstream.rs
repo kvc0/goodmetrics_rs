@@ -8,7 +8,8 @@ use futures_timer::Delay;
 
 use crate::{
     pipeline::{
-        aggregating_sink::{Aggregation, DimensionedMeasurementsMap, StatisticSet},
+        aggregating_sink::DimensionedMeasurementsMap,
+        aggregation::{statistic_set::StatisticSet, Aggregation},
         AbsorbDistribution,
     },
     proto::{

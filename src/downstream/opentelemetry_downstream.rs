@@ -7,10 +7,13 @@ use std::{
 
 use futures_timer::Delay;
 
+use crate::pipeline::aggregation::histogram::Histogram;
 use crate::{
-    pipeline::aggregating_sink::{
-        bucket_10_below_2_sigfigs, Aggregation, DimensionPosition, DimensionedMeasurementsMap,
-        Histogram, StatisticSet,
+    pipeline::{
+        aggregating_sink::{DimensionPosition, DimensionedMeasurementsMap},
+        aggregation::{
+            bucket::bucket_10_below_2_sigfigs, statistic_set::StatisticSet, Aggregation,
+        },
     },
     proto::opentelemetry::{
         self,

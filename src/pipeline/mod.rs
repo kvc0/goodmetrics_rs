@@ -5,9 +5,10 @@ use futures_batch::ChunksTimeoutStreamExt;
 
 use crate::types::{self, Distribution};
 
-use self::aggregating_sink::bucket_10_2_sigfigs;
+use self::aggregation::bucket::bucket_10_2_sigfigs;
 
 pub mod aggregating_sink;
+pub mod aggregation;
 pub mod logging_sink;
 pub mod serializing_sink;
 

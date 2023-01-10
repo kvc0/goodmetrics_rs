@@ -1,5 +1,4 @@
 use std::{
-    cmp::{max, min},
     collections::{hash_map, BTreeMap, HashMap},
     sync::{mpsc::SyncSender, Mutex},
     time::{Duration, Instant, SystemTime},
@@ -12,7 +11,10 @@ use crate::{
     types::{self, Dimension, Measurement, Name},
 };
 
-use super::{AbsorbDistribution, Sink};
+use super::{
+    aggregation::{histogram::Histogram, statistic_set::StatisticSet, Aggregation},
+    AbsorbDistribution, Sink,
+};
 
 // User-named metrics
 pub type MetricsMap = HashMap<Name, DimensionedMeasurementsMap>;
@@ -24,53 +26,6 @@ pub type DimensionedMeasurementsMap = HashMap<DimensionPosition, MeasurementAggr
 pub type DimensionPosition = BTreeMap<Name, Dimension>;
 // Within the dimension position there is a collection of named measurements; we'll store the aggregated view of these
 pub type MeasurementAggregationMap = HashMap<Name, Aggregation>;
-
-pub type Histogram = HashMap<i64, u64>;
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct StatisticSet {
-    pub min: i64,
-    pub max: i64,
-    pub sum: i64,
-    pub count: u64,
-}
-impl Default for StatisticSet {
-    fn default() -> Self {
-        Self {
-            min: i64::MAX,
-            max: i64::MIN,
-            sum: 0,
-            count: 0,
-        }
-    }
-}
-impl StatisticSet {
-    fn accumulate<T: Into<i64>>(&mut self, value: T) {
-        let v: i64 = value.into();
-        self.min = min(v, self.min);
-        self.max = max(v, self.max);
-        self.sum += v;
-        self.count += 1;
-    }
-}
-
-trait HistogramAccumulate {
-    fn accumulate<T: Into<i64>>(&mut self, value: T);
-}
-impl HistogramAccumulate for Histogram {
-    fn accumulate<T: Into<i64>>(&mut self, value: T) {
-        let v = value.into();
-        let b = bucket_10_2_sigfigs(v);
-        self.insert(b, self[&b] + 1);
-    }
-}
-
-// For collecting and periodically reporting
-#[derive(Debug, PartialEq, Eq)]
-pub enum Aggregation {
-    Histogram(Histogram),
-    StatisticSet(StatisticSet),
-}
 
 pub struct AggregatingSink {
     map: Mutex<MetricsMap>,
@@ -241,48 +196,6 @@ where
     }
 }
 
-// Base 10 significant-figures bucketing - toward 0
-fn bucket_10<const FIGURES: u32>(value: i64) -> i64 {
-    if value == 0 {
-        return 0;
-    }
-    // TODO: use i64.log10 when it's promoted to stable https://github.com/rust-lang/rust/issues/70887
-    let power = ((value.abs() as f64).log10().ceil() as i32 - FIGURES as i32).max(0);
-    let magnitude = 10_f64.powi(power);
-
-    value.signum()
-        // -> truncate off magnitude by dividing it away
-        // -> ceil() away from 0 in both directions due to abs
-        * (value.abs() as f64 / magnitude).ceil() as i64
-        // restore original magnitude raised to the next figure if necessary
-        * magnitude as i64
-}
-
-// Base 10 significant-figures bucketing - toward -inf
-fn bucket_10_below<const FIGURES: u32>(value: i64) -> i64 {
-    if value == 0 {
-        return -1;
-    }
-    // TODO: use i64.log10 when it's promoted to stable https://github.com/rust-lang/rust/issues/70887
-    let power = ((value.abs() as f64).log10().ceil() as i32 - FIGURES as i32).max(0);
-    let magnitude = 10_f64.powi(power);
-
-    (value.signum()
-        // -> truncate off magnitude by dividing it away
-        // -> ceil() away from 0 in both directions due to abs
-        * (value.abs() as f64 / magnitude).ceil() as i64 - 1)
-        // restore original magnitude raised to the next figure if necessary
-        * magnitude as i64
-}
-
-pub fn bucket_10_2_sigfigs(value: i64) -> i64 {
-    bucket_10::<2>(value)
-}
-
-pub fn bucket_10_below_2_sigfigs(value: i64) -> i64 {
-    bucket_10_below::<2>(value)
-}
-
 #[cfg(test)]
 mod test {
     use std::{
@@ -293,61 +206,11 @@ mod test {
     use crate::{
         allocator::{always_new_metrics_allocator::AlwaysNewMetricsAllocator, MetricsAllocator},
         metrics::Metrics,
-        pipeline::aggregating_sink::{
-            bucket_10_2_sigfigs, bucket_10_below_2_sigfigs, AggregatingSink, Aggregation,
-            StatisticSet,
-        },
+        pipeline::aggregating_sink::{AggregatingSink, Aggregation, StatisticSet},
         types::{Dimension, Name, Observation},
     };
 
     use super::DimensionedMeasurementsMap;
-
-    #[test_log::test]
-    fn test_bucket() {
-        assert_eq!(0, bucket_10_2_sigfigs(0));
-        assert_eq!(1, bucket_10_2_sigfigs(1));
-        assert_eq!(-11, bucket_10_2_sigfigs(-11));
-
-        assert_eq!(99, bucket_10_2_sigfigs(99));
-        assert_eq!(100, bucket_10_2_sigfigs(100));
-        assert_eq!(110, bucket_10_2_sigfigs(101));
-        assert_eq!(110, bucket_10_2_sigfigs(109));
-        assert_eq!(110, bucket_10_2_sigfigs(110));
-        assert_eq!(120, bucket_10_2_sigfigs(111));
-
-        assert_eq!(8000, bucket_10_2_sigfigs(8000));
-        assert_eq!(8800, bucket_10_2_sigfigs(8799));
-        assert_eq!(8800, bucket_10_2_sigfigs(8800));
-        assert_eq!(8900, bucket_10_2_sigfigs(8801));
-
-        assert_eq!(-8000, bucket_10_2_sigfigs(-8000));
-        assert_eq!(-8800, bucket_10_2_sigfigs(-8799));
-        assert_eq!(-8800, bucket_10_2_sigfigs(-8800));
-        assert_eq!(-8900, bucket_10_2_sigfigs(-8801));
-    }
-
-    #[test_log::test]
-    fn test_bucket_below() {
-        assert_eq!(0, bucket_10_below_2_sigfigs(1));
-        assert_eq!(-12, bucket_10_below_2_sigfigs(-11));
-
-        assert_eq!(98, bucket_10_below_2_sigfigs(99));
-        assert_eq!(99, bucket_10_below_2_sigfigs(100));
-        assert_eq!(100, bucket_10_below_2_sigfigs(101));
-        assert_eq!(100, bucket_10_below_2_sigfigs(109));
-        assert_eq!(100, bucket_10_below_2_sigfigs(110));
-        assert_eq!(110, bucket_10_below_2_sigfigs(111));
-
-        assert_eq!(7900, bucket_10_below_2_sigfigs(8000));
-        assert_eq!(8700, bucket_10_below_2_sigfigs(8799));
-        assert_eq!(8700, bucket_10_below_2_sigfigs(8800));
-        assert_eq!(8800, bucket_10_below_2_sigfigs(8801));
-
-        assert_eq!(-8100, bucket_10_below_2_sigfigs(-8000));
-        assert_eq!(-8900, bucket_10_below_2_sigfigs(-8799));
-        assert_eq!(-8900, bucket_10_below_2_sigfigs(-8800));
-        assert_eq!(-9000, bucket_10_below_2_sigfigs(-8801));
-    }
 
     #[test_log::test]
     fn test_aggregation() {
