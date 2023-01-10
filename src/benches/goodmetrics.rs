@@ -14,7 +14,7 @@ use goodmetrics::{
         goodmetrics_downstream::{create_preaggregated_goodmetrics_batch, GoodmetricsDownstream},
     },
     metrics_factory::{MetricsFactory, RecordingScope},
-    pipeline::aggregating_sink::AggregatingSink,
+    pipeline::aggregating_sink::{AggregatingSink, DistributionMode},
 };
 use tokio::task::LocalSet;
 
@@ -26,7 +26,7 @@ pub fn goodmetrics_demo(criterion: &mut Criterion) {
     );
 
     // Set up the bridge between application metrics threads and the metrics downstream thread
-    let sink = Arc::new(AggregatingSink::new());
+    let sink = Arc::new(AggregatingSink::new(DistributionMode::TDigest));
     let (sender, receiver) = mpsc::sync_channel(128);
 
     // Configure downstream metrics thread tasks

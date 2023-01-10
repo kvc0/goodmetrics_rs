@@ -12,7 +12,10 @@ use crate::{
 };
 
 use super::{
-    aggregation::{histogram::Histogram, statistic_set::StatisticSet, Aggregation},
+    aggregation::{
+        histogram::Histogram, online_tdigest::OnlineTdigest, statistic_set::StatisticSet,
+        Aggregation,
+    },
     AbsorbDistribution, Sink,
 };
 
@@ -27,22 +30,34 @@ pub type DimensionPosition = BTreeMap<Name, Dimension>;
 // Within the dimension position there is a collection of named measurements; we'll store the aggregated view of these
 pub type MeasurementAggregationMap = HashMap<Name, Aggregation>;
 
+#[derive(Debug)]
+pub enum DistributionMode {
+    /// Less space-efficient, less performant, but easy to understand.
+    Histogram,
+    /// Fancy sparse sketch distributions. Currently only compatible with
+    /// Goodmetrics downstream, and timescaledb via timescaledb_toolkit.
+    TDigest,
+}
+
 pub struct AggregatingSink {
     map: Mutex<MetricsMap>,
     cached_position: Mutex<DimensionPosition>,
+    distribution_mode: DistributionMode,
 }
 
 impl Default for AggregatingSink {
+    /// Uses TDigest for distributions by default.
     fn default() -> Self {
-        Self::new()
+        Self::new(DistributionMode::TDigest)
     }
 }
 
 impl AggregatingSink {
-    pub fn new() -> Self {
+    pub fn new(distribution_mode: DistributionMode) -> Self {
         AggregatingSink {
             map: Default::default(),
             cached_position: Default::default(),
+            distribution_mode,
         }
     }
 
@@ -147,14 +162,19 @@ impl AggregatingSink {
             Measurement::Observation(observation) => {
                 accumulate_statisticset(measurements_map, name, observation);
             }
-            Measurement::Distribution(distribution) => {
-                accumulate_distribution(measurements_map, name, distribution);
-            }
+            Measurement::Distribution(distribution) => match self.distribution_mode {
+                DistributionMode::Histogram => {
+                    accumulate_histogram(measurements_map, name, distribution);
+                }
+                DistributionMode::TDigest => {
+                    accumulate_tdigest(measurements_map, name, distribution);
+                }
+            },
         });
     }
 }
 
-fn accumulate_distribution(
+fn accumulate_histogram(
     measurements_map: &mut HashMap<Name, Aggregation>,
     name: Name,
     distribution: types::Distribution,
@@ -167,6 +187,24 @@ fn accumulate_distribution(
             log::error!("conflicting measurement and distribution name")
         }
         Aggregation::Histogram(histogram) => histogram.absorb(distribution),
+        Aggregation::TDigest(td) => td.absorb(distribution),
+    }
+}
+
+fn accumulate_tdigest(
+    measurements_map: &mut HashMap<Name, Aggregation>,
+    name: Name,
+    distribution: types::Distribution,
+) {
+    match measurements_map
+        .entry(name)
+        .or_insert_with(|| Aggregation::TDigest(OnlineTdigest::default()))
+    {
+        Aggregation::StatisticSet(_s) => {
+            log::error!("conflicting measurement and distribution name")
+        }
+        Aggregation::Histogram(histogram) => histogram.absorb(distribution),
+        Aggregation::TDigest(td) => td.absorb(distribution),
     }
 }
 
@@ -181,6 +219,9 @@ fn accumulate_statisticset(
     {
         Aggregation::StatisticSet(statistic_set) => statistic_set.accumulate(observation),
         Aggregation::Histogram(_h) => {
+            log::error!("conflicting measurement and distribution name")
+        }
+        Aggregation::TDigest(_td) => {
             log::error!("conflicting measurement and distribution name")
         }
     }
@@ -206,7 +247,9 @@ mod test {
     use crate::{
         allocator::{always_new_metrics_allocator::AlwaysNewMetricsAllocator, MetricsAllocator},
         metrics::Metrics,
-        pipeline::aggregating_sink::{AggregatingSink, Aggregation, StatisticSet},
+        pipeline::aggregating_sink::{
+            AggregatingSink, Aggregation, DistributionMode, StatisticSet,
+        },
         types::{Dimension, Name, Observation},
     };
 
@@ -214,7 +257,7 @@ mod test {
 
     #[test_log::test]
     fn test_aggregation() {
-        let sink: AggregatingSink = AggregatingSink::new();
+        let sink: AggregatingSink = AggregatingSink::new(DistributionMode::Histogram);
 
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 22));
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 20));
@@ -242,7 +285,7 @@ mod test {
 
     #[test_log::test]
     fn test_draining() {
-        let sink: AggregatingSink = AggregatingSink::new();
+        let sink: AggregatingSink = AggregatingSink::new(DistributionMode::Histogram);
 
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 22));
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 20));

@@ -15,7 +15,7 @@ use goodmetrics::{
         },
     },
     metrics_factory::{MetricsFactory, RecordingScope},
-    pipeline::aggregating_sink::AggregatingSink,
+    pipeline::aggregating_sink::{AggregatingSink, DistributionMode},
 };
 use tokio::task::LocalSet;
 use tokio_rustls::rustls::{OwnedTrustAnchor, RootCertStore};
@@ -24,7 +24,7 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
     env_logger::builder().is_test(false).try_init().unwrap();
 
     // Set up the bridge between application metrics threads and the metrics downstream thread
-    let sink = Arc::new(AggregatingSink::new());
+    let sink = Arc::new(AggregatingSink::new(DistributionMode::Histogram));
     let (sender, receiver) = mpsc::sync_channel(128);
 
     // Configure downstream metrics thread tasks

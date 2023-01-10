@@ -9,7 +9,10 @@ use futures_timer::Delay;
 use crate::{
     pipeline::{
         aggregating_sink::DimensionedMeasurementsMap,
-        aggregation::{statistic_set::StatisticSet, Aggregation},
+        aggregation::{
+            online_tdigest::OnlineTdigest, statistic_set::StatisticSet, tdigest::Centroid,
+            Aggregation,
+        },
         AbsorbDistribution,
     },
     proto::{
@@ -135,6 +138,9 @@ impl From<Aggregation> for proto::goodmetrics::Measurement {
                 Aggregation::StatisticSet(statistic_set) => {
                     proto::goodmetrics::measurement::Value::StatisticSet(statistic_set.into())
                 }
+                Aggregation::TDigest(t_digest) => {
+                    proto::goodmetrics::measurement::Value::Tdigest(t_digest.into())
+                }
             }),
         }
     }
@@ -178,5 +184,27 @@ impl From<Distribution> for proto::goodmetrics::measurement::Value {
         let mut map = HashMap::new();
         map.absorb(value);
         Self::Histogram(proto::goodmetrics::Histogram { buckets: map })
+    }
+}
+
+impl From<OnlineTdigest> for proto::goodmetrics::TDigest {
+    fn from(mut value: OnlineTdigest) -> Self {
+        let mut v = value.reset_mut();
+        Self {
+            centroids: v.drain_centroids().into_iter().map(|c| c.into()).collect(),
+            sum: v.sum(),
+            count: v.count() as u64,
+            max: v.max(),
+            min: v.min(),
+        }
+    }
+}
+
+impl From<Centroid> for proto::goodmetrics::t_digest::Centroid {
+    fn from(value: Centroid) -> Self {
+        Self {
+            mean: value.mean(),
+            weight: value.weight() as u64,
+        }
     }
 }

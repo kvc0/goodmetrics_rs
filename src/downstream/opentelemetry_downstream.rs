@@ -132,6 +132,9 @@ fn as_metrics(
                         duration,
                         &otel_dimensions,
                     ),
+                    Aggregation::TDigest(_) => {
+                        unimplemented!("tdigest for opentelemetry is not implemented")
+                    }
                 })
                 .collect::<Vec<Metric>>()
         })
@@ -343,12 +346,12 @@ mod test {
                 create_preaggregated_opentelemetry_batch, OpenTelemetryDownstream,
             },
         },
-        pipeline::aggregating_sink::AggregatingSink,
+        pipeline::aggregating_sink::{AggregatingSink, DistributionMode},
     };
 
     #[test_log::test(tokio::test)]
     async fn downstream_is_runnable() {
-        let sink = Arc::new(AggregatingSink::new());
+        let sink = Arc::new(AggregatingSink::new(DistributionMode::Histogram));
         let (sender, receiver) = mpsc::sync_channel(128);
 
         let mut downstream = OpenTelemetryDownstream::new(

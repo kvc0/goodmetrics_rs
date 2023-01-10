@@ -45,6 +45,7 @@ message Measurement {
         float f32 = 5;
         StatisticSet statistic_set = 6;
         Histogram histogram = 7;
+        TDigest tdigest = 8;
     }
 }
 
@@ -57,4 +58,22 @@ message StatisticSet {
 
 message Histogram {
     map<int64, uint64> buckets = 1;
+}
+
+// For use with T-Digests. You should be able to construct one of these
+// from libraries in various languages, and they should be relatively
+// easily convertible to downstream representations (like timescale's
+// string representation of tdigests, which is an adaptation of the Rust
+// tdigest crate's representation)
+message TDigest {
+    repeated Centroid centroids = 1;
+    double sum = 2;
+    uint64 count = 3;
+    double max = 4;
+    double min = 5;
+
+    message Centroid {
+        double mean = 1;
+        uint64 weight = 2;
+    }
 }

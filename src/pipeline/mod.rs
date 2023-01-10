@@ -5,7 +5,7 @@ use futures_batch::ChunksTimeoutStreamExt;
 
 use crate::types::{self, Distribution};
 
-use self::aggregation::bucket::bucket_10_2_sigfigs;
+use self::aggregation::{bucket::bucket_10_2_sigfigs, online_tdigest::OnlineTdigest};
 
 pub mod aggregating_sink;
 pub mod aggregation;
@@ -64,6 +64,20 @@ impl AbsorbDistribution for HashMap<i64, u64> {
                         .and_modify(|count| *count += 1)
                         .or_insert(1);
                 });
+            }
+        };
+    }
+}
+
+impl AbsorbDistribution for OnlineTdigest {
+    fn absorb(&mut self, distribution: Distribution) {
+        match distribution {
+            types::Distribution::I64(i) => self.observe_mut(i as f64),
+            types::Distribution::I32(i) => self.observe_mut(i),
+            types::Distribution::U64(i) => self.observe_mut(i as f64),
+            types::Distribution::U32(i) => self.observe_mut(i),
+            types::Distribution::Collection(collection) => {
+                collection.iter().for_each(|i| self.observe_mut(*i as f64));
             }
         };
     }

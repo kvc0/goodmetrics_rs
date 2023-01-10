@@ -176,7 +176,8 @@ mod test {
         metrics::MetricsBehavior,
         metrics_factory::RecordingScope,
         pipeline::{
-            aggregating_sink::AggregatingSink, logging_sink::LoggingSink,
+            aggregating_sink::{AggregatingSink, DistributionMode},
+            logging_sink::LoggingSink,
             serializing_sink::SerializingSink,
         },
     };
@@ -222,7 +223,7 @@ mod test {
     fn aggregating_metrics_factory() {
         let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, Rc<AggregatingSink>> =
             MetricsFactory::new_with_allocator(
-                Rc::new(AggregatingSink::new()),
+                Rc::new(AggregatingSink::new(DistributionMode::Histogram)),
                 &[MetricsBehavior::Default],
                 AlwaysNewMetricsAllocator::default(),
             );
