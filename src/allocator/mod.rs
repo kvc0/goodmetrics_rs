@@ -20,7 +20,7 @@ impl<T, TBuildHasher> MetricsRef<TBuildHasher> for T where
 {
 }
 
-// Extension point for integration with fine crates like https://docs.rs/object-pool/latest/object_pool/
+/// Extension for integration with fine crates like https://docs.rs/object-pool/latest/object_pool/
 pub trait MetricsAllocator<'a, TMetricsRef>
 where
     TMetricsRef: 'a,

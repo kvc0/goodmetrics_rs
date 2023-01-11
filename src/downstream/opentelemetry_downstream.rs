@@ -34,6 +34,8 @@ use super::{channel_connection::ChannelType, EpochTime};
 // anything other than Delta is bugged by design. So yeah, opentelemetry metrics spec is bugged by design.
 const THE_ONLY_SANE_TEMPORALITY: i32 = AggregationTemporality::Delta as i32;
 
+/// Compatibility adapter downstream for OTLP. No dependency on opentelemetry code,
+/// only their protos. All your measurements will be Delta temporality.
 pub struct OpenTelemetryDownstream {
     client: MetricsServiceClient<ChannelType>,
 }

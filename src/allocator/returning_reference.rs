@@ -11,15 +11,15 @@ where
     fn return_referent(&'a self, to_return: TRef);
 }
 
-// Delivers the referent back to the target when the reference is dropped.
-// You can use an object pool if you want to avoid allocations or you can
-// use the AlwaysNewMetricsAllocator if you do not fear the heap.
+/// Delivers the referent back to the target when the reference is dropped.
+/// You can use an object pool if you want to avoid allocations or you can
+/// use the AlwaysNewMetricsAllocator if you do not fear the heap.
 pub struct ReturningRef<'a, TRef: 'a, TReturnTarget: ReturnTarget<'a, TRef>> {
     return_target: &'a TReturnTarget,
     referent: ManuallyDrop<TRef>,
 }
 
-// Treat the ref as a transparent wrapper of the referent for Display purposes
+/// Treat the ref as a transparent wrapper of the referent for Display purposes
 impl<'a, TRef, TReturnTarget: ReturnTarget<'a, TRef>> Display
     for ReturningRef<'a, TRef, TReturnTarget>
 where
@@ -30,7 +30,7 @@ where
     }
 }
 
-// Treat the ref as a transparent wrapper of the referent for Debug purposes
+/// Treat the ref as a transparent wrapper of the referent for Debug purposes
 impl<'a, TRef, TReturnTarget: ReturnTarget<'a, TRef>> Debug
     for ReturningRef<'a, TRef, TReturnTarget>
 where

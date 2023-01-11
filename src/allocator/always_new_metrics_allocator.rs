@@ -12,6 +12,9 @@ use crate::{
 
 use super::MetricsAllocator;
 
+/// Allocator which always creates a new instance.
+/// Probably you will want PooledMetricsAllocator if you are doing
+/// something with very tight timing constraints.
 #[derive(Clone)]
 pub struct AlwaysNewMetricsAllocator<TBuildHasher = RandomState> {
     _phantom: PhantomData<TBuildHasher>,

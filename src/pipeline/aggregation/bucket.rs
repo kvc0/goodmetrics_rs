@@ -1,4 +1,4 @@
-// Base 10 significant-figures bucketing - toward 0
+/// Base 10 significant-figures bucketing - toward 0
 fn bucket_10<const FIGURES: u32>(value: i64) -> i64 {
     if value == 0 {
         return 0;
@@ -15,7 +15,7 @@ fn bucket_10<const FIGURES: u32>(value: i64) -> i64 {
         * magnitude as i64
 }
 
-// Base 10 significant-figures bucketing - toward -inf
+/// Base 10 significant-figures bucketing - toward -inf
 fn bucket_10_below<const FIGURES: u32>(value: i64) -> i64 {
     if value == 0 {
         return -1;
@@ -32,10 +32,12 @@ fn bucket_10_below<const FIGURES: u32>(value: i64) -> i64 {
         * magnitude as i64
 }
 
+/// Base 10 significant-figures bucketing - toward 0
 pub fn bucket_10_2_sigfigs(value: i64) -> i64 {
     bucket_10::<2>(value)
 }
 
+/// Base 10 significant-figures bucketing - toward -inf
 pub fn bucket_10_below_2_sigfigs(value: i64) -> i64 {
     bucket_10_below::<2>(value)
 }

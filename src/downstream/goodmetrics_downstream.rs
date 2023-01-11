@@ -24,6 +24,7 @@ use crate::{
 
 use super::{channel_connection::ChannelType, EpochTime};
 
+/// A downstream that sends metrics to a `goodmetricsd` or other goodmetrics grpc server.
 pub struct GoodmetricsDownstream {
     client: MetricsClient<ChannelType>,
     shared_dimensions: HashMap<String, proto::goodmetrics::Dimension>,

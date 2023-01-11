@@ -19,15 +19,15 @@ use super::{
     AbsorbDistribution, Sink,
 };
 
-// User-named metrics
+/// User-named metrics
 pub type MetricsMap = HashMap<Name, DimensionedMeasurementsMap>;
-// A metrics measurement family is grouped first by its dimension position
+/// A metrics measurement family is grouped first by its dimension position
 pub type DimensionedMeasurementsMap = HashMap<DimensionPosition, MeasurementAggregationMap>;
-// A dimension position is a unique set of dimensions.
-// If a measurement has (1) the same metric name, (2) the same dimensions and (3) the same measurement name as another measurement,
-// it is the same measurement and they should be aggregated together.
+/// A dimension position is a unique set of dimensions.
+/// If a measurement has (1) the same metric name, (2) the same dimensions and (3) the same measurement name as another measurement,
+/// it is the same measurement and they should be aggregated together.
 pub type DimensionPosition = BTreeMap<Name, Dimension>;
-// Within the dimension position there is a collection of named measurements; we'll store the aggregated view of these
+/// Within the dimension position there is a collection of named measurements; we'll store the aggregated view of these
 pub type MeasurementAggregationMap = HashMap<Name, Aggregation>;
 
 #[derive(Debug)]
@@ -36,6 +36,7 @@ pub enum DistributionMode {
     Histogram,
     /// Fancy sparse sketch distributions. Currently only compatible with
     /// Goodmetrics downstream, and timescaledb via timescaledb_toolkit.
+    /// You should prefer t-digests when they are available to you :-)
     TDigest,
 }
 

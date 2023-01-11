@@ -1,5 +1,6 @@
 use std::{fmt::Display, time::Duration};
 
+/// The value part of a dimension's key/value pair.
 #[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub enum Dimension {
     Str(&'static str),
@@ -8,6 +9,7 @@ pub enum Dimension {
     Boolean(bool),
 }
 
+/// An identifier for various things.
 #[derive(Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Clone)]
 pub enum Name {
     Str(&'static str),
@@ -41,12 +43,15 @@ impl Display for Name {
     }
 }
 
+/// Abstraction of measurement kinds - the more unary observation-oriented kind
+/// and the distribution kind.
 #[derive(Debug)]
 pub enum Measurement {
     Observation(Observation),
     Distribution(Distribution),
 }
 
+/// Individual values
 #[derive(Debug)]
 pub enum Observation {
     I64(i64),
@@ -57,6 +62,7 @@ pub enum Observation {
     F32(f32),
 }
 
+/// Values able to be collected into a distribution
 #[derive(Debug)]
 pub enum Distribution {
     I64(i64),

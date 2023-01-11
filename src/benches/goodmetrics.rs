@@ -85,6 +85,7 @@ pub fn goodmetrics_demo(criterion: &mut Criterion) {
             let _scope = metrics.time("timed_delay");
             metrics.measurement("ran", 1);
             metrics.dimension("mod", i % 8);
+            std::thread::sleep(Duration::from_micros(1));
         });
     });
 }

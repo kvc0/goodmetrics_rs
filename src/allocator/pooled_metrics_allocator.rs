@@ -49,6 +49,8 @@ impl Default for PooledMetricsAllocator<RandomState> {
     }
 }
 
+/// Allocates a metrics instance from a pool - Metrics supports restart() so the
+/// returned Metrics, while reused, are cleared of previous measurements.
 impl<'a, TBuildHasher> MetricsAllocator<'a, Reusable<'a, Metrics<TBuildHasher>>>
     for PooledMetricsAllocator<TBuildHasher>
 where

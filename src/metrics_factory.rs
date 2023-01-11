@@ -15,13 +15,13 @@ pub struct MetricsFactory<TMetricsAllocator, TSink> {
     disabled: bool,
 }
 
-/// Cloning a MetricsFactory is not cheap. You should cache it per-thread rather
-/// than doing so to work around visibility issues.
 impl<TMetricsAllocator, TSink> Clone for MetricsFactory<TMetricsAllocator, TSink>
 where
     TSink: Clone,
     TMetricsAllocator: Clone,
 {
+    /// Cloning a MetricsFactory is not free. It's not terrible but you should
+    /// cache it rather than cloning repeatedly.
     fn clone(&self) -> Self {
         Self {
             allocator: self.allocator.clone(),
@@ -36,8 +36,10 @@ pub trait RecordingScope<'a, TMetricsRef: 'a>: ReturnTarget<'a, TMetricsRef>
 where
     Self: Sized,
 {
+    /// The MetricsScope, when completed, records a `totaltime` in nanoseconds.
     fn record_scope(&'a self, scope_name: impl Into<Name>) -> ReturningRef<'a, TMetricsRef, Self>;
 
+    /// The MetricsScope, when completed, records a `totaltime` in nanoseconds.
     fn record_scope_with_behavior(
         &'a self,
         scope_name: impl Into<Name>,
@@ -73,13 +75,11 @@ where
     TSink: Sink<TMetricsRef>,
     TMetricsAllocator: MetricsAllocator<'a, TMetricsRef> + Default,
 {
-    // The MetricsScope, when completed, records a `totaltime` in nanoseconds.
     #[inline]
     fn record_scope(&'a self, scope_name: impl Into<Name>) -> ReturningRef<'a, TMetricsRef, Self> {
         ReturningRef::new(self, unsafe { self.create_new_raw_metrics(scope_name) })
     }
 
-    // The MetricsScope, when completed, records a `totaltime` in nanoseconds.
     #[inline]
     fn record_scope_with_behavior(
         &'a self,

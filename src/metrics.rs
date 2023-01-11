@@ -16,24 +16,24 @@ pub enum MetricsBehavior {
     Suppress = 0x00000010,
 }
 
-// A Metrics encapsulates 1 unit of work.
-// It is a record of the interesting things that happened during that work.
-// A web request handler is a unit of work.
-// A periodic job's execution is a unit of work.
-//
-// Metrics does not deal in things like "gauges" or "counters." It concerns
-// itself with concrete, unary observations - like your code does.
-//
-// Metrics objects are emitted through a reporter chain when they are Dropped.
-// It is at that point that aggregation, if any, is performed.
-//
-// Your code is responsible for putting the details of interest into the
-// Metrics object as it encounters interesting details. You do not need to
-// structure anything specially for Metrics. You just record what you want to.
-//
-// Metrics objects should not be shared between threads. They are unsynchronized
-// and optimized solely for trying to balance overhead cost against observability
-// value.
+/// A Metrics encapsulates 1 unit of work.
+/// It is a record of the interesting things that happened during that work.
+/// A web request handler is a unit of work.
+/// A periodic job's execution is a unit of work.
+///
+/// Metrics does not deal in things like "gauges" or "counters." It concerns
+/// itself with concrete, unary observations - like your code does.
+///
+/// Metrics objects are emitted through a reporter chain when they are Dropped.
+/// It is at that point that aggregation, if any, is performed.
+///
+/// Your code is responsible for putting the details of interest into the
+/// Metrics object as it encounters interesting details. You do not need to
+/// structure anything specially for Metrics. You just record what you want to.
+///
+/// Metrics objects should not be shared between threads. They are unsynchronized
+/// and optimized solely for trying to balance overhead cost against observability
+/// value.
 #[derive(Debug)]
 pub struct Metrics<TBuildHasher = collections::hash_map::RandomState> {
     pub(crate) metrics_name: Name,
@@ -62,12 +62,14 @@ impl<TBuildHasher> Metrics<TBuildHasher>
 where
     TBuildHasher: BuildHasher,
 {
+    /// Record a dimension name and value pair - last write per metrics object wins!
     #[inline]
     pub fn dimension(&self, name: impl Into<Name>, value: impl Into<Dimension>) {
         let mut mutable_dimensions = self.dimensions.lock().expect("Mutex was unable to lock!");
         mutable_dimensions.insert(name.into(), value.into());
     }
 
+    /// Record a dimension name and value pair - last write per metrics object wins!
     /// Prefer this when you have mut on Metrics. It's faster!
     #[inline]
     pub fn dimension_mut(&mut self, name: impl Into<Name>, value: impl Into<Dimension>) {
@@ -78,12 +80,15 @@ where
         mutable_dimensions.insert(name.into(), value.into());
     }
 
+    /// Record a measurement name and value pair - last write per metrics object wins!
     #[inline]
     pub fn measurement(&self, name: impl Into<Name>, value: impl Into<Observation>) {
         let mut mutable_measurements = self.measurements.lock().expect("Mutex was unable to lock!");
         mutable_measurements.insert(name.into(), Measurement::Observation(value.into()));
     }
 
+    /// Record a measurement name and value pair - last write per metrics object wins!
+    /// Prefer this when you have mut on Metrics. It's faster!
     #[inline]
     pub fn measurement_mut(&mut self, name: impl Into<Name>, value: impl Into<Observation>) {
         let mutable_measurements = self
@@ -93,12 +98,17 @@ where
         mutable_measurements.insert(name.into(), Measurement::Observation(value.into()));
     }
 
+    /// Record a distribution name and value pair - last write per metrics object wins!
+    /// Check out t-digests if you're using a goodmetrics + timescale downstream.
     #[inline]
     pub fn distribution(&self, name: impl Into<Name>, value: impl Into<Distribution>) {
         let mut mutable_measurements = self.measurements.lock().expect("Mutex was unable to lock!");
         mutable_measurements.insert(name.into(), Measurement::Distribution(value.into()));
     }
 
+    /// Record a distribution name and value pair - last write per metrics object wins!
+    /// Prefer this when you have mut on Metrics. It's faster!
+    /// Check out t-digests if you're using a goodmetrics + timescale downstream.
     #[inline]
     pub fn distribution_mut(&mut self, name: impl Into<Name>, value: impl Into<Distribution>) {
         let mutable_measurements = self
@@ -108,16 +118,22 @@ where
         mutable_measurements.insert(name.into(), Measurement::Distribution(value.into()));
     }
 
+    /// Record a time distribution in nanoseconds.
+    /// Check out t-digests if you're using a goodmetrics + timescale downstream.
+    ///
+    /// The returned Timer is a scope guard.
     #[inline]
     pub fn time(&self, timer_name: impl Into<Name>) -> Timer<'_, TBuildHasher> {
         Timer::new(self, timer_name)
     }
 
+    /// Name of the metrics you passed in when you created it.
     #[inline]
     pub fn name(&self) -> &Name {
         &self.metrics_name
     }
 
+    /// Clear the structure in preparation for reuse without allocation.
     #[inline]
     pub fn restart(&mut self) {
         self.start_time = Instant::now();
@@ -131,11 +147,12 @@ where
             .clear();
     }
 
-    /// do not report this metrics instance
+    /// Do not report this metrics instance.
     pub fn suppress(&mut self) {
         self.behaviors |= MetricsBehavior::Suppress as u32;
     }
 
+    /// Check if this metrics has that behavior.
     #[inline]
     pub fn has_behavior(&self, behavior: MetricsBehavior) -> bool {
         0 != self.behaviors & behavior as u32
@@ -186,6 +203,8 @@ where
         }
     }
 
+    /// A sibling of restart(), this is a way to destructively move dimensions and
+    /// measurements out of the metrics for aggregation or downstream message building.
     pub fn drain(
         &mut self,
     ) -> (
@@ -205,6 +224,9 @@ where
     }
 }
 
+/// Scope guard for recording nanoseconds into a Metrics.
+/// Starts recording when you create it.
+/// Stops recording and puts its measurement into the Metrics as a distribution when you drop it.
 pub struct Timer<'timer, TBuildHasher>
 where
     TBuildHasher: BuildHasher,
