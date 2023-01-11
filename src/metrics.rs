@@ -16,24 +16,27 @@ pub enum MetricsBehavior {
     Suppress = 0x00000010,
 }
 
-/// A Metrics encapsulates 1 unit of work.
-/// It is a record of the interesting things that happened during that work.
-/// A web request handler is a unit of work.
-/// A periodic job's execution is a unit of work.
+/// A Metrics encapsulates a unit of work.
 ///
-/// Metrics does not deal in things like "gauges" or "counters." It concerns
-/// itself with concrete, unary observations - like your code does.
+/// It is a record of the interesting things that happened during that unit,
+/// and the things that describe it.
+///
+/// A web request handler, grpc service rpc implementation or periodic job's
+/// execution is a unit of work you should have a Metrics for.
+///
+/// Metrics does not deal in things like "gauges" or "counters." It is more
+/// like a single-level trace; it works with concrete observations rather than
+/// exposing your code to aggregators.
 ///
 /// Metrics objects are emitted through a reporter chain when they are Dropped.
-/// It is at that point that aggregation, if any, is performed.
+/// It is at that point that aggregation, if you've configured any, is performed.
 ///
 /// Your code is responsible for putting the details of interest into the
-/// Metrics object as it encounters interesting details. You do not need to
-/// structure anything specially for Metrics. You just record what you want to.
+/// Metrics object as it encounters interesting details. You just record what you
+/// want to.
 ///
-/// Metrics objects should not be shared between threads. They are unsynchronized
-/// and optimized solely for trying to balance overhead cost against observability
-/// value.
+/// Generally prefer to record dimensions as early as possible, in case you
+/// early-out somewhere; in this way you'll have more information in those cases.
 #[derive(Debug)]
 pub struct Metrics<TBuildHasher = collections::hash_map::RandomState> {
     pub(crate) metrics_name: Name,
