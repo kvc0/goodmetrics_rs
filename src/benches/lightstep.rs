@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::{
     sync::{mpsc, Arc},
     time::Duration,
@@ -6,6 +7,7 @@ use std::{
 use criterion::Criterion;
 use hyper::{header::HeaderName, http::HeaderValue};
 
+use goodmetrics::types::{Dimension, Name};
 use goodmetrics::{
     allocator::pooled_metrics_allocator::PooledMetricsAllocator,
     downstream::{
@@ -60,7 +62,13 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
             )
             .await
             .expect("i can make a channel to lightstep");
-            let mut downstream = OpenTelemetryDownstream::new(channel);
+            let mut downstream = OpenTelemetryDownstream::new(
+                channel,
+                Some(BTreeMap::from_iter(vec![(
+                    Name::from("name"),
+                    Dimension::from("value i guess"),
+                )])),
+            );
 
             let metrics_tasks = LocalSet::new();
 

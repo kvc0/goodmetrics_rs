@@ -8,6 +8,7 @@ use std::{
 use futures_timer::Delay;
 
 use crate::pipeline::aggregation::histogram::Histogram;
+use crate::proto::opentelemetry::resource::v1::Resource;
 use crate::{
     pipeline::{
         aggregating_sink::{DimensionPosition, DimensionedMeasurementsMap},
@@ -38,15 +39,19 @@ const THE_ONLY_SANE_TEMPORALITY: i32 = AggregationTemporality::Delta as i32;
 /// only their protos. All your measurements will be Delta temporality.
 pub struct OpenTelemetryDownstream {
     client: MetricsServiceClient<ChannelType>,
+    shared_dimensions: Option<Vec<KeyValue>>,
 }
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
 impl OpenTelemetryDownstream {
-    pub fn new(channel: ChannelType) -> Self {
+    pub fn new(channel: ChannelType, shared_dimensions: Option<DimensionPosition>) -> Self {
         let client: MetricsServiceClient<ChannelType> = MetricsServiceClient::new(channel);
 
-        OpenTelemetryDownstream { client }
+        OpenTelemetryDownstream {
+            client,
+            shared_dimensions: shared_dimensions.map(as_otel_dimensions),
+        }
     }
 
     pub async fn send_batches_forever(&mut self, receiver: Receiver<Vec<Metric>>) {
@@ -56,7 +61,10 @@ impl OpenTelemetryDownstream {
                 Ok(batch) => {
                     let future = self.client.export(ExportMetricsServiceRequest {
                         resource_metrics: vec![ResourceMetrics {
-                            resource: None,
+                            resource: self.shared_dimensions.as_ref().map(|dimensions| Resource {
+                                attributes: dimensions.clone(),
+                                dropped_attributes_count: 0,
+                            }),
                             schema_url: "".to_string(),
                             scope_metrics: vec![ScopeMetrics {
                                 scope: Some(InstrumentationScope {
@@ -360,6 +368,7 @@ mod test {
             get_channel("localhost:6379", || None, None).await.expect(
                 "i can make a channel to localhost even though it probably isn't listening",
             ),
+            None,
         );
 
         let metrics_tasks = tokio::task::LocalSet::new();
