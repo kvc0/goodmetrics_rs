@@ -19,7 +19,10 @@ use goodmetrics::{
 use tokio::task::LocalSet;
 
 pub fn goodmetrics_demo(criterion: &mut Criterion) {
-    env_logger::builder().is_test(false).try_init().unwrap();
+    env_logger::builder()
+        .is_test(false)
+        .try_init()
+        .expect("goodmetrics env logger");
     let auth = option_env!("GOODMETRICS_AUTH").unwrap_or("none");
     let endpoint = option_env!("GOODMETRICS_SERVER").expect(
         "You need to provide a GOODMETRICS_SERVER=https://1.2.3.4:5678 environment variable",

@@ -17,12 +17,14 @@ jobs:
       with:
           toolchain: stable
           override: true
+          components: rustfmt, clippy
+    - uses: Swatinem/rust-cache@v2
     - name: Rustfmt
       run: cargo fmt -- --check
     - name: Clippy
       run: |
         cargo --version
         cargo clippy --version
-        cargo clippy --all-targets --all-features -- -D warnings
+        cargo clippy --all-targets --all-features -- -D warnings -W clippy::unwrap_used
     - name: Run tests
       run: cargo test --verbose

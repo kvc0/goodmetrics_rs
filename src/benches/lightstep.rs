@@ -23,7 +23,10 @@ use tokio::task::LocalSet;
 use tokio_rustls::rustls::{OwnedTrustAnchor, RootCertStore};
 
 pub fn lightstep_demo(criterion: &mut Criterion) {
-    env_logger::builder().is_test(false).try_init().unwrap();
+    env_logger::builder()
+        .is_test(false)
+        .try_init()
+        .expect("lightstep demo logger");
 
     // Set up the bridge between application metrics threads and the metrics downstream thread
     let sink = Arc::new(AggregatingSink::new(DistributionMode::Histogram));
