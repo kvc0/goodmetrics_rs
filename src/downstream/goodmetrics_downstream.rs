@@ -79,6 +79,7 @@ impl GoodmetricsDownstream {
     }
 }
 
+/// For use with the AggregatingSink, this is for formatting goodmetrics metrics batches.
 pub fn create_preaggregated_goodmetrics_batch(
     timestamp: SystemTime,
     duration: Duration,

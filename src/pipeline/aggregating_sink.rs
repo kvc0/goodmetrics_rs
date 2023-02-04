@@ -33,6 +33,7 @@ pub type MeasurementAggregationMap = HashMap<Name, Aggregation>;
 #[derive(Debug)]
 pub enum DistributionMode {
     /// Less space-efficient, less performant, but easy to understand.
+    /// If you're using opentelemetry downstream, this is your only choice.
     Histogram,
     /// Fancy sparse sketch distributions. Currently only compatible with
     /// Goodmetrics downstream, and timescaledb via timescaledb_toolkit.
@@ -40,6 +41,7 @@ pub enum DistributionMode {
     TDigest,
 }
 
+/// A metrics sink that takes Metrics in, aggregates them, and emits them on some schedule.
 pub struct AggregatingSink {
     map: Mutex<MetricsMap>,
     cached_position: Mutex<DimensionPosition>,
@@ -263,7 +265,10 @@ mod test {
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 22));
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 20));
 
-        let map = sink.map.lock().unwrap();
+        let map = sink
+            .map
+            .lock()
+            .expect("should be able to lock the aggregation sink");
         assert_eq!(
             HashMap::from([(
                 Name::from("test"),
@@ -315,7 +320,10 @@ mod test {
             transformed,
         );
 
-        assert_eq!(HashMap::from([]), *sink.map.lock().unwrap());
+        assert_eq!(
+            HashMap::from([]),
+            *sink.map.lock().expect("should be able to lock the sink")
+        );
     }
 
     fn get_metrics(

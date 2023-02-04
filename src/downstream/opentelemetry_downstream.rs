@@ -100,6 +100,7 @@ impl OpenTelemetryDownstream {
     }
 }
 
+/// For use with the AggregatingSink, this is for formatting opentelemetry metrics batches.
 pub fn create_preaggregated_opentelemetry_batch(
     timestamp: SystemTime,
     duration: Duration,

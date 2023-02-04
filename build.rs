@@ -1,13 +1,9 @@
-use std::env;
-use std::path::PathBuf;
-
 fn main() {
-    let _out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     tonic_build::configure()
         .build_server(false)
         .type_attribute(".", "#[derive()]")
         .compile(&["proto/metrics/goodmetrics.proto"], &["proto"])
-        .unwrap();
+        .expect("should be able to compile goodmetrics protos");
 
     tonic_build::configure()
         .build_server(false)
@@ -23,5 +19,5 @@ fn main() {
             ],
             &["proto"],
         )
-        .unwrap();
+        .expect("should be able to compile opentelemetry protos");
 }

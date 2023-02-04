@@ -10,6 +10,9 @@ pub mod returning_reference;
 
 pub mod pooled_metrics_allocator;
 
+/// A convenience for typedefs of smart references for Metrics objects. This is
+/// used by the PooledMetricsAllocator to do object pooling while still allowing
+/// you to opt out.
 pub trait MetricsRef<TBuildHasher = RandomState>:
     Deref<Target = Metrics<TBuildHasher>> + DerefMut<Target = Metrics<TBuildHasher>>
 {
