@@ -21,4 +21,4 @@ metrics.distribution("some_continuous_value", instantaneous_network_bandwidth); 
 ```
 
 # Development
-Use [cargo bump major/minor/patch --git-tag](https://github.com/wraithan/cargo-bump) to update version.
+Use `cargo ws version minor` to update version.

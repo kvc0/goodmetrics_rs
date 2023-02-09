@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 1.*
+      - v1.*
 
 env:
   CARGO_TERM_COLOR: always
