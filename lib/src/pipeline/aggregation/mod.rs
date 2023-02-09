@@ -4,6 +4,7 @@ pub mod bucket;
 pub mod histogram;
 pub mod online_tdigest;
 pub mod statistic_set;
+#[allow(clippy::unwrap_used)]
 pub mod tdigest;
 
 // This will need to be reduced. I'm planning to add object pool references

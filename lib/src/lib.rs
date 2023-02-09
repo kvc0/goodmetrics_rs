@@ -25,4 +25,4 @@ pub mod metrics_factory;
 pub mod pipeline;
 pub mod types;
 
-pub (crate) mod proto;
+pub(crate) mod proto;

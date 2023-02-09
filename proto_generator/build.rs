@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-
+#[allow(clippy::unwrap_used)]
 fn main() {
     let out_dir = PathBuf::from("../lib/src/proto");
     let proto_dir = "../proto";
@@ -13,7 +13,10 @@ fn main() {
         .build_server(false)
         .type_attribute(".", "#[derive()]")
         .out_dir(out_dir.clone())
-        .compile(&[format!("{proto_dir}/metrics/goodmetrics.proto")], &[proto_dir])
+        .compile(
+            &[format!("{proto_dir}/metrics/goodmetrics.proto")],
+            &[proto_dir],
+        )
         .unwrap();
 
     tonic_build::configure()
@@ -22,11 +25,13 @@ fn main() {
         .type_attribute("InstrumentationLibrary", "#[derive(Eq)]")
         .type_attribute("Buckets", "#[derive(Eq)]")
         .type_attribute("ExportMetricsServiceResponse", "#[derive(Eq)]")
-        .out_dir(out_dir.clone())
+        .out_dir(out_dir)
         .compile(
             &[
                 format!("{proto_dir}/opentelemetry/proto/metrics/v1/metrics.proto"),
-                format!("{proto_dir}/opentelemetry/proto/collector/metrics/v1/metrics_service.proto"),
+                format!(
+                    "{proto_dir}/opentelemetry/proto/collector/metrics/v1/metrics_service.proto"
+                ),
                 format!("{proto_dir}/opentelemetry/proto/common/v1/common.proto"),
             ],
             &[proto_dir],
