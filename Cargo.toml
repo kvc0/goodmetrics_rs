@@ -1,52 +1,7 @@
-[package]
-name = "goodmetrics"
-version = "1.4.0"
-edition = "2021"
-description = "Unlimited cardinality, fast metrics recording - for services"
-license = "Apache-2.0"
-authors = ["kvc0"]
-readme = "./README.md"
-repository = "https://github.com/kvc0/goodmetrics_rs"
-keywords = ["metrics", "goodmetrics", "service", "performance"]
-categories = ["web-programming", "development-tools::profiling"]
 
-[package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
+[workspace]
+members = [
+    "proto_generator",
+    "lib",
+]
 
-[lib]
-bench = false
-
-[[bench]]
-name = "benches"
-path = "src/benches/mod.rs"
-harness = false
-
-[dependencies]
-log =  { version = "0.4" }
-
-futures = { version = "0.3" }
-futures-batch = { version = "0.6" }
-futures-timer = { version = "3.0" }
-
-tonic = { version = "0.8", features = ["tls"] }
-prost = { version = "0.11" }
-hyper = { version = "0.14" }
-tower = { version = "0.4" }
-tokio-rustls = { version = "0.23", features = ["dangerous_configuration"] }
-hyper-rustls = { version = "0.23", features = ["http2"] }
-
-object-pool = { version = "0.5" }
-ordered-float = { version = "3.4" }
-
-[build-dependencies]
-tonic-build = { version = "0.8", features = [] }
-
-[dev-dependencies]
-env_logger = { version = "0.10" }
-test-log = { version = "0.2" }
-tokio = { version = "1.21", features = ["rt-multi-thread"]}
-tokio-test = { version = "0.4" }
-webpki-roots = { version = "0" }
-
-criterion = { version = "0.4" }
