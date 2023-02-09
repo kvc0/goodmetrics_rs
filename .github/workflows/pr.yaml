@@ -12,11 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - run: ./install_protoc.sh
+    - name: Install protoc
+      run: ./install_protoc.sh
     - uses: actions-rs/toolchain@v1
       with:
           toolchain: stable
           override: true
+    - uses: Swatinem/rust-cache@v2
+
     - name: Rustfmt
       run: cargo fmt -- --check
     - name: Clippy
@@ -26,3 +29,6 @@ jobs:
         cargo clippy --all-targets --all-features -- -D warnings
     - name: Run tests
       run: cargo test --verbose
+
+    - name: Ensure protos are up to date
+      run: cargo publish --dry-run --all-features
