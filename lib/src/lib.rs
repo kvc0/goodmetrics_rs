@@ -25,4 +25,6 @@ pub mod metrics_factory;
 pub mod pipeline;
 pub mod types;
 
-pub(crate) mod proto;
+/// Internal generated types - ideally you shouldn't need to do much with them.
+/// Nevertheless, they are exported in case you need them.
+pub mod proto;

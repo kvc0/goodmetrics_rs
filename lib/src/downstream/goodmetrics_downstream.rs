@@ -192,7 +192,7 @@ impl From<OnlineTdigest> for proto::goodmetrics::TDigest {
     fn from(mut value: OnlineTdigest) -> Self {
         let mut v = value.reset_mut();
         Self {
-            centroids: v.drain_centroids().into_iter().map(|c| c.into()).collect(),
+            centroids: v.drain_centroids().map(|c| c.into()).collect(),
             sum: v.sum(),
             count: v.count() as u64,
             max: v.max(),

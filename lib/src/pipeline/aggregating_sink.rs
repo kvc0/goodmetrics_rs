@@ -4,6 +4,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
+use futures::future::BoxFuture;
 use futures_timer::Delay;
 
 use crate::{
@@ -40,10 +41,37 @@ pub enum DistributionMode {
     TDigest,
 }
 
+pub type SleepFunction = dyn Fn(Duration) -> BoxFuture<'static, ()> + Send + Sync;
+
+/// Primarily for testing and getting really deep into some stuff, here's
+/// a way to customize how you group aggregates over time.
+pub enum TimeSource {
+    SystemTime,
+    DynamicTime {
+        now_wall_clock: Box<dyn Fn() -> SystemTime + Send + Sync>,
+        now_timer: Box<dyn Fn() -> Instant + Send + Sync>,
+        sleep: Box<SleepFunction>,
+    },
+}
+impl std::fmt::Debug for TimeSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SystemTime => write!(f, "SystemTime"),
+            Self::DynamicTime { .. } => f.debug_tuple("DynamicTime").finish(),
+        }
+    }
+}
+impl Default for TimeSource {
+    fn default() -> Self {
+        Self::SystemTime
+    }
+}
+
 pub struct AggregatingSink {
     map: Mutex<MetricsMap>,
     cached_position: Mutex<DimensionPosition>,
     distribution_mode: DistributionMode,
+    time_source: TimeSource,
 }
 
 impl Default for AggregatingSink {
@@ -59,6 +87,19 @@ impl AggregatingSink {
             map: Default::default(),
             cached_position: Default::default(),
             distribution_mode,
+            time_source: Default::default(),
+        }
+    }
+
+    pub fn new_with_time_source(
+        distribution_mode: DistributionMode,
+        time_source: TimeSource,
+    ) -> Self {
+        AggregatingSink {
+            map: Default::default(),
+            cached_position: Default::default(),
+            distribution_mode,
+            time_source,
         }
     }
 
@@ -104,29 +145,31 @@ impl AggregatingSink {
     {
         // Try to align to some even column since the epoch. It helps make metrics better-aligned when systems have well-aligned clocks.
         // It's usually more convenient in grafana this way.
-        let extra_start_offset = SystemTime::now()
+        let extra_start_offset = self
+            .now_wall_clock()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("could not get system time")
             .as_millis()
             % cadence.as_millis();
-        Delay::new(Duration::from_millis(extra_start_offset as u64)).await;
-        let mut last_emit = Instant::now();
+        self.delay(Duration::from_millis(extra_start_offset as u64))
+            .await;
+        let mut last_emit = self.now_timer();
 
         loop {
-            let now = Instant::now();
-            let wait_for = if let Some(wait_for) = (last_emit + cadence).checked_duration_since(now)
-            {
-                last_emit += cadence;
-                wait_for
-            } else {
-                while (last_emit + cadence).checked_duration_since(now).is_none() {
-                    last_emit += cadence;
+            loop {
+                let now = self.now_timer();
+                let wait_for = now
+                    .checked_duration_since(last_emit)
+                    .and_then(|latency| cadence.checked_sub(latency))
+                    .unwrap_or(Duration::ZERO);
+                if wait_for.is_zero() {
+                    break;
                 }
-                Duration::ZERO
-            };
-            Delay::new(wait_for).await;
+                self.delay(wait_for).await;
+            }
 
-            if let Some(batch) = self.drain_into(SystemTime::now(), cadence, make_batch) {
+            last_emit = self.now_timer();
+            if let Some(batch) = self.drain_into(self.now_wall_clock(), cadence, make_batch) {
                 match sender.try_send(batch) {
                     Ok(_) => {
                         log::info!("sent batch to sink")
@@ -172,6 +215,27 @@ impl AggregatingSink {
                 }
             },
         });
+    }
+
+    fn now_wall_clock(&self) -> SystemTime {
+        match &self.time_source {
+            TimeSource::SystemTime => SystemTime::now(),
+            TimeSource::DynamicTime { now_wall_clock, .. } => now_wall_clock(),
+        }
+    }
+
+    fn now_timer(&self) -> Instant {
+        match &self.time_source {
+            TimeSource::SystemTime => Instant::now(),
+            TimeSource::DynamicTime { now_timer, .. } => now_timer(),
+        }
+    }
+
+    async fn delay(&self, how_long: Duration) {
+        match &self.time_source {
+            TimeSource::SystemTime => Delay::new(how_long).await,
+            TimeSource::DynamicTime { sleep, .. } => sleep(how_long).await,
+        }
     }
 }
 
