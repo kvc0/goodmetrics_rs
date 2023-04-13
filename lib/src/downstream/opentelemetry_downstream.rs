@@ -167,6 +167,10 @@ impl From<Dimension> for AnyValue {
             value: Some(match good_dimension {
                 Dimension::Str(s) => Value::StringValue(s.into()),
                 Dimension::String(s) => Value::StringValue(s),
+                Dimension::Shared(s) => Value::StringValue(
+                    // Let's try to avoid cloning if this is the last place the string is shared
+                    std::sync::Arc::<String>::try_unwrap(s).unwrap_or_else(|this| this.to_string()),
+                ),
                 Dimension::Number(n) => Value::IntValue(n as i64),
                 Dimension::Boolean(b) => Value::BoolValue(b),
             }),

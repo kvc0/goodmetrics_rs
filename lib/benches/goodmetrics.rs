@@ -89,3 +89,8 @@ pub fn goodmetrics_demo(criterion: &mut Criterion) {
         });
     });
 }
+
+criterion::criterion_group!(benches, goodmetrics_demo);
+criterion::criterion_main! {
+    benches,
+}

@@ -106,3 +106,8 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
         });
     });
 }
+
+criterion::criterion_group!(benches, lightstep_demo);
+criterion::criterion_main! {
+    benches,
+}

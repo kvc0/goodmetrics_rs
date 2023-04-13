@@ -18,8 +18,15 @@ rustdoc-args = ["--cfg", "docsrs"]
 bench = false
 
 [[bench]]
-name = "benches"
-path = "src/benches/mod.rs"
+name = "bench"
+harness = false
+
+[[bench]]
+name = "lightstep"
+harness = false
+
+[[bench]]
+name = "goodmetrics"
 harness = false
 
 [dependencies]

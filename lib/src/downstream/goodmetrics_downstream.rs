@@ -120,6 +120,10 @@ impl From<Dimension> for proto::goodmetrics::Dimension {
             value: Some(match value {
                 Dimension::Str(s) => proto::goodmetrics::dimension::Value::String(s.to_string()),
                 Dimension::String(s) => proto::goodmetrics::dimension::Value::String(s),
+                Dimension::Shared(s) => proto::goodmetrics::dimension::Value::String(
+                    // Let's try to avoid cloning if this is the last place the string is shared
+                    std::sync::Arc::<String>::try_unwrap(s).unwrap_or_else(|this| this.to_string()),
+                ),
                 Dimension::Number(n) => proto::goodmetrics::dimension::Value::Number(n),
                 Dimension::Boolean(b) => proto::goodmetrics::dimension::Value::Boolean(b),
             }),

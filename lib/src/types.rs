@@ -1,10 +1,13 @@
-use std::{fmt::Display, time::Duration};
+use std::{fmt::Display, sync::Arc, time::Duration};
 
 /// The value part of a dimension's key/value pair.
 #[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub enum Dimension {
     Str(&'static str),
     String(String),
+    /// If you have a rarely-changing identifier you could consider using shared memory
+    /// instead of cloning repeatedly.
+    Shared(Arc<String>),
     Number(u64),
     Boolean(bool),
 }
@@ -14,6 +17,14 @@ pub enum Dimension {
 pub enum Name {
     Str(&'static str),
     String(String),
+    /// If you have a rarely-changing identifier you could consider using shared memory
+    /// instead of cloning repeatedly.
+    ///
+    /// Aside from memory, a rough latency rule of thumb is:
+    /// * String: 100%
+    /// * Shared: 50%
+    /// * Static: 30%
+    Shared(Arc<String>),
 }
 
 impl Name {
@@ -21,6 +32,7 @@ impl Name {
         match self {
             Name::Str(s) => s,
             Name::String(s) => s,
+            Name::Shared(s) => s,
         }
     }
 }
@@ -30,6 +42,9 @@ impl From<Name> for String {
         match name {
             Name::Str(s) => s.to_owned(),
             Name::String(s) => s,
+            Name::Shared(s) => {
+                std::sync::Arc::<String>::try_unwrap(s).unwrap_or_else(|this| this.to_string())
+            }
         }
     }
 }
@@ -39,6 +54,7 @@ impl Display for Name {
         match self {
             Name::Str(s) => f.write_str(s),
             Name::String(s) => f.write_str(s),
+            Name::Shared(s) => f.write_str(s),
         }
     }
 }
@@ -93,28 +109,42 @@ impl From<&Observation> for f64 {
 impl From<&'static str> for Name {
     #[inline]
     fn from(s: &'static str) -> Self {
-        Name::Str(s)
+        Self::Str(s)
     }
 }
 
 impl From<String> for Name {
     #[inline]
     fn from(s: String) -> Self {
-        Name::String(s)
+        Self::String(s)
+    }
+}
+
+impl From<Arc<String>> for Name {
+    #[inline]
+    fn from(s: Arc<String>) -> Self {
+        Self::Shared(s)
     }
 }
 
 impl From<&'static str> for Dimension {
     #[inline]
     fn from(s: &'static str) -> Self {
-        Dimension::Str(s)
+        Self::Str(s)
     }
 }
 
 impl From<String> for Dimension {
     #[inline]
     fn from(s: String) -> Self {
-        Dimension::String(s)
+        Self::String(s)
+    }
+}
+
+impl From<Arc<String>> for Dimension {
+    #[inline]
+    fn from(s: Arc<String>) -> Self {
+        Self::Shared(s)
     }
 }
 
