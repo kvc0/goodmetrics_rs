@@ -112,10 +112,10 @@ impl AggregatingSink {
         &self,
         timestamp: SystemTime,
         duration: Duration,
-        drain_into: DrainFunction,
+        drain_into: &DrainFunction,
     ) -> Option<TReturn>
     where
-        DrainFunction: FnOnce(
+        DrainFunction: Fn(
             SystemTime,
             Duration,
             hash_map::Drain<'_, Name, DimensionedMeasurementsMap>,
@@ -136,12 +136,11 @@ impl AggregatingSink {
         sender: SyncSender<TBatch>,
         make_batch: TMakeBatchFunction,
     ) where
-        TMakeBatchFunction: FnMut(
-                SystemTime,
-                Duration,
-                hash_map::Drain<'_, Name, DimensionedMeasurementsMap>,
-            ) -> TBatch
-            + Copy,
+        TMakeBatchFunction: Fn(
+            SystemTime,
+            Duration,
+            hash_map::Drain<'_, Name, DimensionedMeasurementsMap>,
+        ) -> TBatch,
     {
         // Try to align to some even column since the epoch. It helps make metrics better-aligned when systems have well-aligned clocks.
         // It's usually more convenient in grafana this way.
@@ -169,7 +168,7 @@ impl AggregatingSink {
             }
 
             last_emit = self.now_timer();
-            if let Some(batch) = self.drain_into(self.now_wall_clock(), cadence, make_batch) {
+            if let Some(batch) = self.drain_into(self.now_wall_clock(), cadence, &make_batch) {
                 match sender.try_send(batch) {
                     Ok(_) => {
                         log::info!("sent batch to sink")
@@ -356,7 +355,7 @@ mod test {
         sink.update_metrics_map(get_metrics("a", "dimension", "v", 20));
 
         let transformed: Vec<(Name, DimensionedMeasurementsMap)> = sink
-            .drain_into(SystemTime::now(), Duration::from_secs(1), |_, _, drain| {
+            .drain_into(SystemTime::now(), Duration::from_secs(1), &|_, _, drain| {
                 drain.collect()
             })
             .expect("there should be contents in the batch");
