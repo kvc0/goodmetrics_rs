@@ -1,6 +1,6 @@
 [package]
 name = "goodmetrics"
-version = "1.8.0"
+version = "1.9.0"
 edition = "2021"
 description = "Unlimited cardinality, fast metrics recording - for services"
 license = "Apache-2.0"
