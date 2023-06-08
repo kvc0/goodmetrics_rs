@@ -92,7 +92,7 @@ impl OpenTelemetryDownstream {
                     };
                 }
                 Err(timeout) => {
-                    log::info!("no metrics activity: {timeout}");
+                    log::debug!("no metrics activity: {timeout}");
                     Delay::new(interval).await;
                 }
             }
