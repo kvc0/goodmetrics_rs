@@ -11,7 +11,7 @@ pub mod tdigest;
 // here; after which this won't be an issue anymore.
 #[allow(clippy::large_enum_variant)]
 /// For collecting and periodically reporting
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Aggregation {
     Histogram(Histogram),
     StatisticSet(StatisticSet),
