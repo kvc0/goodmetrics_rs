@@ -32,7 +32,7 @@ pub struct OnlineTdigest {
 impl Clone for OnlineTdigest {
     fn clone(&self) -> Self {
         Self {
-            state: Mutex::new(self.state.lock().expect("lock should never fail").clone())
+            state: Mutex::new(self.state.lock().expect("lock should never fail").clone()),
         }
     }
 }
