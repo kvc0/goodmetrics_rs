@@ -113,7 +113,7 @@ fn get_snapshot(state: &mut State) -> TDigest {
 }
 
 #[inline]
-fn record_observation(mut state: &mut State, observation: f64) {
+fn record_observation(state: &mut State, observation: f64) {
     let index = state.i as usize;
     state.amortized_observations[index] = observation;
     state.i += 1;
