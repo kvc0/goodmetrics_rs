@@ -29,6 +29,21 @@ pub struct OnlineTdigest {
     state: Mutex<State>,
 }
 
+impl Clone for OnlineTdigest {
+    fn clone(&self) -> Self {
+        match self.state.try_lock() {
+            Ok(state) => {
+                Self {
+                    state: Mutex::new(state.clone())
+                }
+            },
+            Err(_) => {
+                OnlineTdigest::default()
+            },
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone)]
 struct State {
     current: TDigest,
