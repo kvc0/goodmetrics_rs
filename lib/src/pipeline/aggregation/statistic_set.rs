@@ -1,6 +1,6 @@
 use std::cmp::{max, min};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct StatisticSet {
     pub min: i64,
     pub max: i64,
