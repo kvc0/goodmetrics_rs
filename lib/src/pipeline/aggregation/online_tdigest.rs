@@ -29,7 +29,7 @@ pub struct OnlineTdigest {
     state: Mutex<State>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct State {
     current: TDigest,
     amortized_observations: [f64; 32],
