@@ -29,7 +29,15 @@ pub struct OnlineTdigest {
     state: Mutex<State>,
 }
 
-#[derive(Default, Debug)]
+impl Clone for OnlineTdigest {
+    fn clone(&self) -> Self {
+        Self {
+            state: Mutex::new(self.state.lock().expect("lock should never fail").clone()),
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone)]
 struct State {
     current: TDigest,
     amortized_observations: [f64; 32],
@@ -105,7 +113,7 @@ fn get_snapshot(state: &mut State) -> TDigest {
 }
 
 #[inline]
-fn record_observation(mut state: &mut State, observation: f64) {
+fn record_observation(state: &mut State, observation: f64) {
     let index = state.i as usize;
     state.amortized_observations[index] = observation;
     state.i += 1;
