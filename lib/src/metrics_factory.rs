@@ -227,6 +227,7 @@ mod test {
                 &[MetricsBehavior::Default],
                 AlwaysNewMetricsAllocator::default(),
             );
+        #[allow(clippy::redundant_clone)]
         let cloned = metrics_factory.clone();
         {
             let metrics = metrics_factory.record_scope("test");

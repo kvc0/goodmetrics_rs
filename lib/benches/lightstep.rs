@@ -41,7 +41,7 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
                 "https://ingest.lightstep.com",
                 || {
                     let mut store = RootCertStore::empty();
-                    store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(
+                    store.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(
                         |trust_anchor| {
                             OwnedTrustAnchor::from_subject_spki_name_constraints(
                                 trust_anchor.subject,
