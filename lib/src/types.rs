@@ -12,6 +12,18 @@ pub enum Dimension {
     Boolean(bool),
 }
 
+impl Display for Dimension {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Dimension::Str(s) => write!(f, "{s}"),
+            Dimension::String(s) => write!(f, "{s}"),
+            Dimension::Shared(s) => write!(f, "{s}"),
+            Dimension::Number(n) => write!(f, "{n}"),
+            Dimension::Boolean(b) => write!(f, "{b}"),
+        }
+    }
+}
+
 /// An identifier for various things.
 #[derive(Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Clone)]
 pub enum Name {
