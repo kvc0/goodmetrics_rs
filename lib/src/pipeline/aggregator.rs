@@ -1,11 +1,13 @@
 use std::{
-    collections::{hash_map, BTreeMap, HashMap},
-    sync::{mpsc::SyncSender, Mutex},
+    collections::{BTreeMap, HashMap},
+    mem::replace,
+    sync::{
+        atomic::{AtomicBool, AtomicUsize},
+        mpsc::{self, SyncSender},
+        Arc,
+    },
     time::{Duration, Instant, SystemTime},
 };
-
-use futures::future::BoxFuture;
-use futures_timer::Delay;
 
 use crate::{
     allocator::MetricsRef,
@@ -17,11 +19,11 @@ use super::{
         histogram::Histogram, online_tdigest::OnlineTdigest, statistic_set::StatisticSet,
         Aggregation,
     },
-    AbsorbDistribution, Sink,
+    AbsorbDistribution,
 };
 
 /// User-named metrics
-pub type MetricsMap = HashMap<Name, DimensionedMeasurementsMap>;
+pub type AggregatedMetricsMap = HashMap<Name, DimensionedMeasurementsMap>;
 /// A metrics measurement family is grouped first by its dimension position
 pub type DimensionedMeasurementsMap = HashMap<DimensionPosition, MeasurementAggregationMap>;
 /// A dimension position is a unique set of dimensions.
@@ -41,7 +43,7 @@ pub enum DistributionMode {
     TDigest,
 }
 
-pub type SleepFunction = dyn Fn(Duration) -> BoxFuture<'static, ()> + Send + Sync;
+pub type SleepFunction = dyn Fn(Duration) + Send + Sync;
 
 /// Primarily for testing and getting really deep into some stuff, here's
 /// a way to customize how you group aggregates over time.
@@ -67,80 +69,75 @@ impl Default for TimeSource {
     }
 }
 
-pub struct AggregatingSink {
-    map: Mutex<MetricsMap>,
-    cached_position: Mutex<DimensionPosition>,
+pub struct Aggregator<TMetricsRef> {
+    metrics_queue: mpsc::Receiver<TMetricsRef>,
+    map: AggregatedMetricsMap,
     distribution_mode: DistributionMode,
     time_source: TimeSource,
 }
 
-impl Default for AggregatingSink {
-    /// Uses TDigest for distributions by default.
-    fn default() -> Self {
-        Self::new(DistributionMode::TDigest)
-    }
-}
-
-impl AggregatingSink {
-    pub fn new(distribution_mode: DistributionMode) -> Self {
-        AggregatingSink {
+impl<TMetricsRef> Aggregator<TMetricsRef>
+where
+    TMetricsRef: MetricsRef + Send + 'static,
+{
+    pub fn new(
+        metrics_queue: mpsc::Receiver<TMetricsRef>,
+        distribution_mode: DistributionMode,
+    ) -> Self {
+        Self {
+            metrics_queue,
             map: Default::default(),
-            cached_position: Default::default(),
             distribution_mode,
             time_source: Default::default(),
         }
     }
 
     pub fn new_with_time_source(
+        metrics_queue: mpsc::Receiver<TMetricsRef>,
         distribution_mode: DistributionMode,
         time_source: TimeSource,
     ) -> Self {
-        AggregatingSink {
+        Self {
+            metrics_queue,
             map: Default::default(),
-            cached_position: Default::default(),
             distribution_mode,
             time_source,
         }
     }
 
-    // Ensure that you don't tarry long in the drain callback. The aggregator is held up while you are draining.
-    // This is to keep overhead relatively low; I don't want to charge you map growth over and over at least for
-    // your bread and butter metrics.
-    // Just drain into your target type (for example, a metrics batch to send to a goodmetricsd server) within
-    // the callback. Send the request outside of this scope.
-    pub fn drain_into<DrainFunction, TReturn>(
-        &self,
-        timestamp: SystemTime,
-        duration: Duration,
-        drain_into: &DrainFunction,
-    ) -> Option<TReturn>
+    pub fn spawn_aggregation_thread<TMakeBatchFunction, TBatch>(
+        self,
+        cadence: Duration,
+        sender: SyncSender<TBatch>,
+        make_batch: TMakeBatchFunction,
+    ) -> Result<(std::thread::JoinHandle<()>, Arc<AtomicBool>), std::io::Error>
     where
-        DrainFunction: Fn(
-            SystemTime,
-            Duration,
-            hash_map::Drain<'_, Name, DimensionedMeasurementsMap>,
-        ) -> TReturn,
+        TMakeBatchFunction:
+            Fn(SystemTime, Duration, &mut AggregatedMetricsMap) -> TBatch + Send + 'static,
+        TBatch: Send + 'static,
     {
-        let mut map = self.map.lock().expect("must be able to access metrics map");
-        if map.is_empty() {
-            return None;
-        }
-        let metrics_drain = map.drain();
-
-        Some(drain_into(timestamp, duration, metrics_drain))
+        let abort = Arc::new(AtomicBool::new(false));
+        static I: AtomicUsize = AtomicUsize::new(0);
+        let thread_id = I.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let thread_abort = abort.clone();
+        std::thread::Builder::new()
+            .name(format!("aggregator-{thread_id}"))
+            .spawn(move || {
+                self.aggregate_metrics_forever(thread_abort, cadence, sender, make_batch);
+            })
+            .map(|handle| (handle, abort))
     }
 
-    pub async fn drain_into_sender_forever<TMakeBatchFunction, TBatch>(
-        &self,
+    /// This consumes the calling thread forever. You might want to dedicate one.
+    /// Consider calling spawn_aggregation_thread instead.
+    pub fn aggregate_metrics_forever<TMakeBatchFunction, TBatch>(
+        mut self,
+        abort: Arc<AtomicBool>,
         cadence: Duration,
         sender: SyncSender<TBatch>,
         make_batch: TMakeBatchFunction,
     ) where
-        TMakeBatchFunction: Fn(
-            SystemTime,
-            Duration,
-            hash_map::Drain<'_, Name, DimensionedMeasurementsMap>,
-        ) -> TBatch,
+        TMakeBatchFunction: Fn(SystemTime, Duration, &mut AggregatedMetricsMap) -> TBatch,
     {
         // Try to align to some even column since the epoch. It helps make metrics better-aligned when systems have well-aligned clocks.
         // It's usually more convenient in grafana this way.
@@ -150,22 +147,15 @@ impl AggregatingSink {
             .expect("could not get system time")
             .as_millis()
             % cadence.as_millis();
-        self.delay(Duration::from_millis(extra_start_offset as u64))
-            .await;
+        std::thread::sleep(Duration::from_millis(extra_start_offset as u64));
         let mut last_emit = self.now_timer();
 
         loop {
-            loop {
-                let now = self.now_timer();
-                let wait_for = now
-                    .checked_duration_since(last_emit)
-                    .and_then(|latency| cadence.checked_sub(latency))
-                    .unwrap_or(Duration::ZERO);
-                if wait_for.is_zero() {
-                    break;
-                }
-                self.delay(wait_for).await;
+            if abort.load(std::sync::atomic::Ordering::Relaxed) {
+                log::info!("quitting aggregator");
+                break;
             }
+            self.receive_until_next_batch(last_emit, cadence);
 
             last_emit = self.now_timer();
             if let Some(batch) = self.drain_into(self.now_wall_clock(), cadence, &make_batch) {
@@ -181,39 +171,95 @@ impl AggregatingSink {
         }
     }
 
-    fn update_metrics_map(&self, mut sunk_metrics: impl MetricsRef) {
-        let mut map = self.map.lock().expect("must be able to access metrics map");
-        let dimensioned_measurements_map: &mut DimensionedMeasurementsMap =
-            map.entry(sunk_metrics.metrics_name.clone()).or_default();
-        let (dimensions_drain, measurements_drain) = sunk_metrics.drain();
+    fn receive_until_next_batch(&mut self, last_emit: Instant, cadence: Duration) {
+        loop {
+            let now = self.now_timer();
+            let wait_for = now
+                .checked_duration_since(last_emit)
+                .and_then(|latency| cadence.checked_sub(latency))
+                .unwrap_or(Duration::ZERO);
+            self.receive_one(wait_for);
+        }
+    }
 
-        let mut cached_position = self
-            .cached_position
-            .lock()
-            .expect("must be able to access state");
-        cached_position.extend(dimensions_drain);
-        let measurements_map: &mut MeasurementAggregationMap =
-            match dimensioned_measurements_map.get_mut(&cached_position) {
-                Some(map) => map,
-                None => dimensioned_measurements_map
-                    .entry(cached_position.clone())
-                    .or_default(),
-            };
-        cached_position.clear();
-        drop(cached_position);
-        measurements_drain.for_each(|(name, measurement)| match measurement {
-            Measurement::Observation(observation) => {
-                accumulate_statisticset(measurements_map, name, observation);
+    fn receive_one(&mut self, wait_for: Duration) -> bool {
+        match self.metrics_queue.recv_timeout(wait_for) {
+            Ok(more) => {
+                self.aggregate_metrics(more);
+                true
             }
-            Measurement::Distribution(distribution) => match self.distribution_mode {
-                DistributionMode::Histogram => {
-                    accumulate_histogram(measurements_map, name, distribution);
+            Err(e) => {
+                log::trace!("done waiting: {e:?}");
+                false
+            }
+        }
+    }
+
+    // Ensure that you don't tarry long in the drain callback. The aggregator is held up while you are draining.
+    // This is to keep overhead relatively low; I don't want to charge you map growth over and over at least for
+    // your bread and butter metrics.
+    // Just drain into your target type (for example, a metrics batch to send to a goodmetricsd server) within
+    // the callback. Send the request outside of this scope.
+    fn drain_into<DrainFunction, TReturn>(
+        &mut self,
+        timestamp: SystemTime,
+        duration: Duration,
+        drain_into: &DrainFunction,
+    ) -> Option<TReturn>
+    where
+        DrainFunction: Fn(SystemTime, Duration, &mut AggregatedMetricsMap) -> TReturn,
+    {
+        if self.map.is_empty() {
+            return None;
+        }
+
+        Some(drain_into(timestamp, duration, &mut self.map))
+    }
+
+    fn aggregate_metrics(&mut self, mut sunk_metrics: TMetricsRef) {
+        let metrics_name = replace(
+            &mut sunk_metrics.as_mut().metrics_name,
+            Name::Str("_uninitialized_"),
+        );
+        let (dimensions, measurements) = sunk_metrics.as_mut().drain();
+
+        let dimensioned_measurements_map: &mut DimensionedMeasurementsMap =
+            match self.map.get_mut(&metrics_name) {
+                Some(existing) => existing,
+                None => {
+                    self.map.insert(metrics_name.clone(), Default::default());
+                    self.map
+                        .get_mut(&metrics_name)
+                        .expect("I just inserted this 1 line above")
                 }
-                DistributionMode::TDigest => {
-                    accumulate_tdigest(measurements_map, name, distribution);
+            };
+
+        let measurements_map: &mut MeasurementAggregationMap =
+            match dimensioned_measurements_map.get_mut(dimensions) {
+                Some(map) => map,
+                None => {
+                    dimensioned_measurements_map.insert(dimensions.clone(), Default::default());
+                    dimensioned_measurements_map
+                        .get_mut(dimensions)
+                        .expect("I just inserted this 1 line above")
                 }
-            },
-        });
+            };
+
+        measurements
+            .drain()
+            .for_each(|(name, measurement)| match measurement {
+                Measurement::Observation(observation) => {
+                    accumulate_statisticset(measurements_map, name, observation);
+                }
+                Measurement::Distribution(distribution) => match self.distribution_mode {
+                    DistributionMode::Histogram => {
+                        accumulate_histogram(measurements_map, name, distribution);
+                    }
+                    DistributionMode::TDigest => {
+                        accumulate_tdigest(measurements_map, name, distribution);
+                    }
+                },
+            });
     }
 
     fn now_wall_clock(&self) -> SystemTime {
@@ -227,13 +273,6 @@ impl AggregatingSink {
         match &self.time_source {
             TimeSource::SystemTime => Instant::now(),
             TimeSource::DynamicTime { now_timer, .. } => now_timer(),
-        }
-    }
-
-    async fn delay(&self, how_long: Duration) {
-        match &self.time_source {
-            TimeSource::SystemTime => Delay::new(how_long).await,
-            TimeSource::DynamicTime { sleep, .. } => sleep(how_long).await,
         }
     }
 }
@@ -291,29 +330,19 @@ fn accumulate_statisticset(
     }
 }
 
-impl<TSink, TMetricsRef> Sink<TMetricsRef> for TSink
-where
-    TSink: AsRef<AggregatingSink>,
-    TMetricsRef: MetricsRef,
-{
-    fn accept(&self, metrics_ref: TMetricsRef) {
-        self.as_ref().update_metrics_map(metrics_ref)
-    }
-}
-
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod test {
     use std::{
         collections::{BTreeMap, HashMap},
+        sync::mpsc::sync_channel,
         time::{Duration, SystemTime},
     };
 
     use crate::{
         allocator::{always_new_metrics_allocator::AlwaysNewMetricsAllocator, MetricsAllocator},
         metrics::Metrics,
-        pipeline::aggregating_sink::{
-            AggregatingSink, Aggregation, DistributionMode, StatisticSet,
-        },
+        pipeline::aggregator::{Aggregation, Aggregator, DistributionMode, StatisticSet},
         types::{Dimension, Name, Observation},
     };
 
@@ -321,12 +350,17 @@ mod test {
 
     #[test_log::test]
     fn test_aggregation() {
-        let sink: AggregatingSink = AggregatingSink::new(DistributionMode::Histogram);
+        let (sender, receiver) = sync_channel(16);
+        let mut sink: Aggregator<Metrics> = Aggregator::new(receiver, DistributionMode::Histogram);
 
-        sink.update_metrics_map(get_metrics("a", "dimension", "v", 22));
-        sink.update_metrics_map(get_metrics("a", "dimension", "v", 20));
+        sender.send(get_metrics("a", "dimension", "v", 22)).unwrap();
+        sender.send(get_metrics("a", "dimension", "v", 20)).unwrap();
 
-        let map = sink.map.lock().unwrap();
+        assert!(sink.receive_one(Duration::from_millis(1)));
+        assert!(sink.receive_one(Duration::from_millis(1)));
+        assert!(!sink.receive_one(Duration::from_millis(1)), "I only sent 2");
+
+        let map = sink.map;
         assert_eq!(
             HashMap::from([(
                 Name::from("test"),
@@ -343,21 +377,28 @@ mod test {
                     )])
                 )])
             )]),
-            *map,
+            map,
         )
     }
 
     #[test_log::test]
     fn test_draining() {
-        let sink: AggregatingSink = AggregatingSink::new(DistributionMode::Histogram);
+        let (sender, receiver) = sync_channel(16);
+        let mut sink: Aggregator<Metrics> = Aggregator::new(receiver, DistributionMode::Histogram);
 
-        sink.update_metrics_map(get_metrics("a", "dimension", "v", 22));
-        sink.update_metrics_map(get_metrics("a", "dimension", "v", 20));
+        sender.send(get_metrics("a", "dimension", "v", 22)).unwrap();
+        sender.send(get_metrics("a", "dimension", "v", 20)).unwrap();
+
+        assert!(sink.receive_one(Duration::from_millis(1)));
+        assert!(sink.receive_one(Duration::from_millis(1)));
+        assert!(!sink.receive_one(Duration::from_millis(1)), "I only sent 2");
 
         let transformed: Vec<(Name, DimensionedMeasurementsMap)> = sink
-            .drain_into(SystemTime::now(), Duration::from_secs(1), &|_, _, drain| {
-                drain.collect()
-            })
+            .drain_into(
+                SystemTime::now(),
+                Duration::from_secs(1),
+                &|_, _, aggregated| aggregated.drain().collect(),
+            )
             .expect("there should be contents in the batch");
         assert_eq!(
             Vec::from([(
@@ -378,7 +419,7 @@ mod test {
             transformed,
         );
 
-        assert_eq!(HashMap::from([]), *sink.map.lock().unwrap());
+        assert_eq!(HashMap::from([]), sink.map);
     }
 
     fn get_metrics(
@@ -386,7 +427,7 @@ mod test {
         dimension: impl Into<Dimension>,
         measurement_name: impl Into<Name>,
         measurement: impl Into<Observation>,
-    ) -> Box<Metrics> {
+    ) -> Metrics {
         let metrics = AlwaysNewMetricsAllocator::default().new_metrics("test");
         metrics.dimension(dimension_name, dimension);
         metrics.measurement(measurement_name, measurement);

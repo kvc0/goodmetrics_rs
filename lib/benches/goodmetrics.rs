@@ -8,29 +8,40 @@ use criterion::Criterion;
 use hyper::{header::HeaderName, http::HeaderValue};
 
 use goodmetrics::{
-    allocator::pooled_metrics_allocator::PooledMetricsAllocator,
+    allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator,
     downstream::{
         channel_connection::get_channel,
         goodmetrics_downstream::{create_preaggregated_goodmetrics_batch, GoodmetricsDownstream},
     },
     metrics_factory::{MetricsFactory, RecordingScope},
-    pipeline::aggregating_sink::{AggregatingSink, DistributionMode},
+    pipeline::{
+        aggregator::{Aggregator, DistributionMode},
+        stream_sink::StreamSink,
+    },
 };
 use tokio::task::LocalSet;
 
+#[allow(clippy::unwrap_used)]
 pub fn goodmetrics_demo(criterion: &mut Criterion) {
     env_logger::builder().is_test(false).try_init().unwrap();
-    let auth = option_env!("GOODMETRICS_AUTH").unwrap_or("none");
-    let endpoint = option_env!("GOODMETRICS_SERVER").expect(
+    let auth = std::env::var("GOODMETRICS_AUTH").unwrap_or("none".to_string());
+    let endpoint = std::env::var("GOODMETRICS_SERVER").expect(
         "You need to provide a GOODMETRICS_SERVER=https://1.2.3.4:5678 environment variable",
     );
 
     // Set up the bridge between application metrics threads and the metrics downstream thread
-    let sink = Arc::new(AggregatingSink::new(DistributionMode::TDigest));
+    let (sink, receiver) = StreamSink::new();
+    let aggregator = Aggregator::new(receiver, DistributionMode::TDigest);
     let (sender, receiver) = mpsc::sync_channel(128);
 
     // Configure downstream metrics thread tasks
-    let task_sink = sink.clone();
+    aggregator
+        .spawn_aggregation_thread(
+            Duration::from_secs(1),
+            sender,
+            create_preaggregated_goodmetrics_batch,
+        )
+        .expect("it should spawn");
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -38,7 +49,7 @@ pub fn goodmetrics_demo(criterion: &mut Criterion) {
             .expect("should be able to make tokio runtime");
         runtime.block_on(async move {
             let channel = get_channel(
-                endpoint,
+                &endpoint,
                 || None,
                 Some((
                     HeaderName::from_static("authorization"),
@@ -55,15 +66,6 @@ pub fn goodmetrics_demo(criterion: &mut Criterion) {
             let metrics_tasks = LocalSet::new();
 
             metrics_tasks.spawn_local(async move {
-                task_sink
-                    .drain_into_sender_forever(
-                        Duration::from_secs(1),
-                        sender,
-                        create_preaggregated_goodmetrics_batch,
-                    )
-                    .await;
-            });
-            metrics_tasks.spawn_local(async move {
                 downstream.send_batches_forever(receiver).await;
             });
 
@@ -72,13 +74,15 @@ pub fn goodmetrics_demo(criterion: &mut Criterion) {
     });
 
     // Prepare the application metrics (we only need the sink to make a factory - you can have a factory per thread if you want)
-    let metrics_factory: MetricsFactory<PooledMetricsAllocator, Arc<AggregatingSink>> =
+    let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, StreamSink<_>> =
         MetricsFactory::new(sink);
+    let metrics_factory = Arc::new(metrics_factory);
 
     // Finally, run the application and record metrics
     criterion.bench_function("goodmetrics", |bencher| {
         let mut i = 0_u64;
-        bencher.iter(|| {
+        let metrics_factory = metrics_factory.clone();
+        bencher.iter(move || {
             i += 1;
 
             let metrics = metrics_factory.record_scope("demo");

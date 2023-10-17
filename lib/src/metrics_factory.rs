@@ -88,7 +88,7 @@ where
     ) -> ReturningRef<'a, TMetricsRef, Self> {
         ReturningRef::new(self, unsafe {
             let mut m = self.create_new_raw_metrics(scope_name);
-            m.add_behavior(behavior);
+            m.as_mut().add_behavior(behavior);
             m
         })
     }
@@ -96,12 +96,15 @@ where
     // You should consider using record_scope() instead.
     #[inline]
     fn emit(&self, metrics: TMetricsRef) {
-        if metrics.has_behavior(MetricsBehavior::Suppress) {
+        if metrics.as_ref().has_behavior(MetricsBehavior::Suppress) {
             return;
         }
-        if !metrics.has_behavior(MetricsBehavior::SuppressTotalTime) {
-            let elapsed = metrics.start_time.elapsed();
-            metrics.distribution("totaltime", elapsed);
+        if !metrics
+            .as_ref()
+            .has_behavior(MetricsBehavior::SuppressTotalTime)
+        {
+            let elapsed = metrics.as_ref().start_time.elapsed();
+            metrics.as_ref().distribution("totaltime", elapsed);
         }
 
         self.sink.accept(metrics)
@@ -115,9 +118,9 @@ where
     #[inline]
     unsafe fn create_new_raw_metrics(&'a self, metrics_name: impl Into<Name>) -> TMetricsRef {
         let mut m = self.allocator.new_metrics(metrics_name);
-        m.set_raw_behavior(self.default_metrics_behavior);
+        m.as_mut().set_raw_behavior(self.default_metrics_behavior);
         if self.disabled {
-            m.add_behavior(MetricsBehavior::Suppress)
+            m.as_mut().add_behavior(MetricsBehavior::Suppress)
         }
         m
     }
@@ -169,16 +172,15 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::rc::Rc;
-
     use crate::{
         allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator,
-        metrics::MetricsBehavior,
+        metrics::{Metrics, MetricsBehavior},
         metrics_factory::RecordingScope,
         pipeline::{
-            aggregating_sink::{AggregatingSink, DistributionMode},
+            aggregator::{Aggregator, DistributionMode},
             logging_sink::LoggingSink,
             serializing_sink::SerializingSink,
+            stream_sink::StreamSink,
         },
     };
 
@@ -221,9 +223,11 @@ mod test {
 
     #[test_log::test]
     fn aggregating_metrics_factory() {
-        let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, Rc<AggregatingSink>> =
+        let (stream_sink, receiver) = StreamSink::new();
+        let _aggregator = Aggregator::new(receiver, DistributionMode::Histogram);
+        let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, StreamSink<Metrics>> =
             MetricsFactory::new_with_allocator(
-                Rc::new(AggregatingSink::new(DistributionMode::Histogram)),
+                stream_sink,
                 &[MetricsBehavior::Default],
                 AlwaysNewMetricsAllocator::default(),
             );

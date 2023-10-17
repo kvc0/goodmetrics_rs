@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::RandomState, HashMap},
+    collections::{hash_map::RandomState, BTreeMap, HashMap},
     hash::BuildHasher,
     time::Instant,
 };
@@ -36,7 +36,7 @@ impl<T: BuildHasher + Default> PooledMetricsAllocator<T> {
         Metrics::new(
             "",
             Instant::now(),
-            HashMap::with_hasher(Default::default()),
+            BTreeMap::new(),
             HashMap::with_hasher(Default::default()),
             MetricsBehavior::Default as u32,
         )

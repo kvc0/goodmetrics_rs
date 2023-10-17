@@ -9,6 +9,7 @@ repository = "https://github.com/kvc0/goodmetrics_rs"
 publish = false
 
 [lib]
+bench = false
 
 [build-dependencies]
 tonic-build = { version = "0.8", features = [] }

@@ -1,7 +1,4 @@
-use std::{
-    collections::hash_map::RandomState,
-    ops::{Deref, DerefMut},
-};
+use std::collections::hash_map::RandomState;
 
 use crate::{metrics::Metrics, types::Name};
 
@@ -11,12 +8,12 @@ pub mod returning_reference;
 pub mod pooled_metrics_allocator;
 
 pub trait MetricsRef<TBuildHasher = RandomState>:
-    Deref<Target = Metrics<TBuildHasher>> + DerefMut<Target = Metrics<TBuildHasher>>
+    AsRef<Metrics<TBuildHasher>> + AsMut<Metrics<TBuildHasher>>
 {
 }
 
 impl<T, TBuildHasher> MetricsRef<TBuildHasher> for T where
-    T: Deref<Target = Metrics<TBuildHasher>> + DerefMut<Target = Metrics<TBuildHasher>>
+    T: AsRef<Metrics<TBuildHasher>> + AsMut<Metrics<TBuildHasher>>
 {
 }
 

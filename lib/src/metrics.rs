@@ -1,5 +1,5 @@
 use std::{
-    collections::{self, HashMap},
+    collections::{self, BTreeMap, HashMap},
     fmt::Display,
     hash::BuildHasher,
     mem::ManuallyDrop,
@@ -41,9 +41,21 @@ pub enum MetricsBehavior {
 pub struct Metrics<TBuildHasher = collections::hash_map::RandomState> {
     pub(crate) metrics_name: Name,
     pub(crate) start_time: Instant,
-    dimensions: Mutex<HashMap<Name, Dimension, TBuildHasher>>,
+    dimensions: Mutex<BTreeMap<Name, Dimension>>,
     measurements: Mutex<HashMap<Name, Measurement, TBuildHasher>>,
     pub(crate) behaviors: u32,
+}
+
+impl AsRef<Metrics> for Metrics {
+    fn as_ref(&self) -> &Metrics {
+        self
+    }
+}
+
+impl AsMut<Metrics> for Metrics {
+    fn as_mut(&mut self) -> &mut Metrics {
+        self
+    }
 }
 
 // Blanket implementation for any kind of metrics - T doesn't factor into the display
@@ -193,7 +205,7 @@ where
     pub fn new(
         name: impl Into<Name>,
         start_time: Instant,
-        dimensions: HashMap<Name, Dimension, TBuildHasher>,
+        dimensions: BTreeMap<Name, Dimension>,
         measurements: HashMap<Name, Measurement, TBuildHasher>,
         behaviors: u32,
     ) -> Self {
@@ -211,18 +223,16 @@ where
     pub fn drain(
         &mut self,
     ) -> (
-        collections::hash_map::Drain<Name, Dimension>,
-        collections::hash_map::Drain<Name, Measurement>,
+        &mut BTreeMap<Name, Dimension>,
+        &mut HashMap<Name, Measurement, TBuildHasher>,
     ) {
         (
             self.dimensions
                 .get_mut()
-                .expect("Mutex was unable to lock!")
-                .drain(),
+                .expect("Mutex was unable to lock!"),
             self.measurements
                 .get_mut()
-                .expect("Mutex was unable to lock!")
-                .drain(),
+                .expect("Mutex was unable to lock!"),
         )
     }
 }
@@ -266,7 +276,10 @@ where
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashMap, time::Instant};
+    use std::{
+        collections::{BTreeMap, HashMap},
+        time::Instant,
+    };
 
     use crate::metrics::{Metrics, Timer};
 
@@ -278,7 +291,7 @@ mod test {
         let metrics = Metrics::new(
             "name",
             Instant::now(),
-            HashMap::from([]),
+            BTreeMap::from([]),
             HashMap::from([]),
             0,
         );
@@ -287,7 +300,7 @@ mod test {
         let metrics = Metrics::new(
             "name",
             Instant::now(),
-            HashMap::from([]),
+            BTreeMap::from([]),
             HashMap::from([]),
             0,
         );
@@ -299,7 +312,7 @@ mod test {
         let metrics = Metrics::new(
             "name",
             Instant::now(),
-            HashMap::from([]),
+            BTreeMap::from([]),
             HashMap::from([]),
             0,
         );

@@ -7,10 +7,11 @@ use crate::types::{self, Distribution};
 
 use self::aggregation::{bucket::bucket_10_2_sigfigs, online_tdigest::OnlineTdigest};
 
-pub mod aggregating_sink;
 pub mod aggregation;
+pub mod aggregator;
 pub mod logging_sink;
 pub mod serializing_sink;
+pub mod stream_sink;
 
 pub trait Sink<Sunk> {
     fn accept(&self, to_sink: Sunk);

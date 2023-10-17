@@ -1,20 +1,20 @@
 use std::{
     cmp::Reverse,
-    collections::{hash_map, BinaryHeap},
+    collections::BinaryHeap,
     sync::mpsc::Receiver,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use futures_timer::Delay;
 
-use crate::pipeline::aggregation::histogram::Histogram;
+use crate::pipeline::{aggregation::histogram::Histogram, aggregator::AggregatedMetricsMap};
 use crate::proto::opentelemetry::resource::v1::Resource;
 use crate::{
     pipeline::{
-        aggregating_sink::{DimensionPosition, DimensionedMeasurementsMap},
         aggregation::{
             bucket::bucket_10_below_2_sigfigs, statistic_set::StatisticSet, Aggregation,
         },
+        aggregator::{DimensionPosition, DimensionedMeasurementsMap},
     },
     proto::opentelemetry::{
         self,
@@ -103,9 +103,10 @@ impl OpenTelemetryDownstream {
 pub fn create_preaggregated_opentelemetry_batch(
     timestamp: SystemTime,
     duration: Duration,
-    batch: hash_map::Drain<'_, Name, DimensionedMeasurementsMap>,
+    batch: &mut AggregatedMetricsMap,
 ) -> Vec<Metric> {
     batch
+        .drain()
         .flat_map(|(name, dimensioned_measurements)| {
             as_metrics(name, timestamp, duration, dimensioned_measurements)
         })
@@ -348,10 +349,7 @@ fn as_otel_histogram(
 
 #[cfg(test)]
 mod test {
-    use std::{
-        sync::{mpsc, Arc},
-        time::Duration,
-    };
+    use std::{sync::mpsc, time::Duration};
 
     use crate::{
         downstream::{
@@ -360,13 +358,18 @@ mod test {
                 create_preaggregated_opentelemetry_batch, OpenTelemetryDownstream,
             },
         },
-        pipeline::aggregating_sink::{AggregatingSink, DistributionMode},
+        metrics::Metrics,
+        pipeline::{
+            aggregator::{Aggregator, DistributionMode},
+            stream_sink::StreamSink,
+        },
     };
 
     #[test_log::test(tokio::test)]
     async fn downstream_is_runnable() {
-        let sink = Arc::new(AggregatingSink::new(DistributionMode::Histogram));
-        let (sender, receiver) = mpsc::sync_channel(128);
+        let (_sink, receiver) = StreamSink::<Box<Metrics>>::new();
+        let aggregator = Aggregator::new(receiver, DistributionMode::Histogram);
+        let (batch_sender, batch_receiver) = mpsc::sync_channel(128);
 
         let mut downstream = OpenTelemetryDownstream::new(
             get_channel("localhost:6379", || None, None).await.expect(
@@ -375,22 +378,21 @@ mod test {
             None,
         );
 
+        let (aggregator_handle, cancel_aggregator) = aggregator
+            .spawn_aggregation_thread(
+                Duration::from_millis(10),
+                batch_sender,
+                create_preaggregated_opentelemetry_batch,
+            )
+            .expect("I can spawn threads");
+
         let metrics_tasks = tokio::task::LocalSet::new();
-        let task_sink = sink.clone();
-        let sink_joiner = metrics_tasks.spawn_local(async move {
-            task_sink
-                .drain_into_sender_forever(
-                    Duration::from_secs(1),
-                    sender,
-                    create_preaggregated_opentelemetry_batch,
-                )
-                .await
-        });
 
         let downstream_joiner = metrics_tasks
-            .spawn_local(async move { downstream.send_batches_forever(receiver).await });
+            .spawn_local(async move { downstream.send_batches_forever(batch_receiver).await });
 
-        sink_joiner.abort();
+        cancel_aggregator.store(true, std::sync::atomic::Ordering::Relaxed);
+        aggregator_handle.join().expect("can join");
         downstream_joiner.abort();
         metrics_tasks.await;
     }
