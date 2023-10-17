@@ -172,13 +172,16 @@ where
     }
 
     fn receive_until_next_batch(&mut self, last_emit: Instant, cadence: Duration) {
-        loop {
+        let mut look_for_more = true;
+        while look_for_more {
             let now = self.now_timer();
-            let wait_for = now
+            look_for_more = match now
                 .checked_duration_since(last_emit)
                 .and_then(|latency| cadence.checked_sub(latency))
-                .unwrap_or(Duration::ZERO);
-            self.receive_one(wait_for);
+            {
+                Some(wait_for) => self.receive_one(wait_for),
+                None => false,
+            }
         }
     }
 
