@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map, HashMap},
+    collections::HashMap,
     sync::mpsc::Receiver,
     time::{Duration, SystemTime},
 };
@@ -8,11 +8,11 @@ use futures_timer::Delay;
 
 use crate::{
     pipeline::{
-        aggregating_sink::DimensionedMeasurementsMap,
         aggregation::{
             online_tdigest::OnlineTdigest, statistic_set::StatisticSet, tdigest::Centroid,
             Aggregation,
         },
+        aggregator::{AggregatedMetricsMap, DimensionedMeasurementsMap},
         AbsorbDistribution,
     },
     proto::{
@@ -82,9 +82,10 @@ impl GoodmetricsDownstream {
 pub fn create_preaggregated_goodmetrics_batch(
     timestamp: SystemTime,
     duration: Duration,
-    batch: hash_map::Drain<'_, Name, DimensionedMeasurementsMap>,
+    batch: &mut AggregatedMetricsMap,
 ) -> Vec<Datum> {
     batch
+        .drain()
         .flat_map(|(name, dimensioned_measurements)| {
             as_datums(name, timestamp, duration, dimensioned_measurements)
         })

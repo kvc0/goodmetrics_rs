@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::RandomState, HashMap},
+    collections::{hash_map::RandomState, BTreeMap, HashMap},
     hash::BuildHasher,
     marker::PhantomData,
     time::Instant,
@@ -36,19 +36,19 @@ impl Default for AlwaysNewMetricsAllocator<RandomState> {
     }
 }
 
-impl<'a, TBuildHasher> MetricsAllocator<'a, Box<Metrics<TBuildHasher>>>
+impl<'a, TBuildHasher> MetricsAllocator<'a, Metrics<TBuildHasher>>
     for AlwaysNewMetricsAllocator<TBuildHasher>
 where
     TBuildHasher: BuildHasher + Default + 'a,
 {
     #[inline]
-    fn new_metrics(&self, metrics_name: impl Into<Name>) -> Box<Metrics<TBuildHasher>> {
-        Box::new(Metrics::new(
+    fn new_metrics(&self, metrics_name: impl Into<Name>) -> Metrics<TBuildHasher> {
+        Metrics::new(
             metrics_name,
             Instant::now(),
-            HashMap::with_hasher(Default::default()),
+            BTreeMap::new(),
             HashMap::with_hasher(Default::default()),
             MetricsBehavior::Default as u32,
-        ))
+        )
     }
 }

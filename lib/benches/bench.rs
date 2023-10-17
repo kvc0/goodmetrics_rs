@@ -4,4 +4,5 @@ mod benchmarks;
 
 criterion_main! {
     benchmarks::dimensions::benches,
+    benchmarks::aggregation::benches,
 }

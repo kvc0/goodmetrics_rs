@@ -26,7 +26,7 @@ jobs:
       run: |
         cargo --version
         cargo clippy --version
-        cargo clippy --all-targets --all-features -- -D warnings
+        cargo clippy --all-targets --all-features -- -D warnings -W clippy::unwrap_used
     - name: Run tests
       run: cargo test --verbose
 
