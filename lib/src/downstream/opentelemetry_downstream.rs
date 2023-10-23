@@ -81,7 +81,7 @@ impl OpenTelemetryDownstream {
                     .await;
                 match result {
                     Ok(success) => {
-                        log::info!("sent metrics: {success:?}");
+                        log::debug!("sent metrics: {success:?}");
                     }
                     Err(err) => {
                         if !err.metadata().is_empty() {
