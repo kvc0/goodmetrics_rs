@@ -41,8 +41,8 @@ pub enum MetricsBehavior {
 pub struct Metrics<TBuildHasher = collections::hash_map::RandomState> {
     pub(crate) metrics_name: Name,
     pub(crate) start_time: Instant,
-    dimensions: Mutex<BTreeMap<Name, Dimension>>,
-    measurements: Mutex<HashMap<Name, Measurement, TBuildHasher>>,
+    dimensions: BTreeMap<Name, Dimension>,
+    measurements: HashMap<Name, Measurement, TBuildHasher>,
     pub(crate) behaviors: u32,
 }
 
@@ -79,58 +79,21 @@ where
 {
     /// Record a dimension name and value pair - last write per metrics object wins!
     #[inline]
-    pub fn dimension(&self, name: impl Into<Name>, value: impl Into<Dimension>) {
-        let mut mutable_dimensions = self.dimensions.lock().expect("Mutex was unable to lock!");
-        mutable_dimensions.insert(name.into(), value.into());
-    }
-
-    /// Record a dimension name and value pair - last write per metrics object wins!
-    /// Prefer this when you have mut on Metrics. It's faster!
-    #[inline]
-    pub fn dimension_mut(&mut self, name: impl Into<Name>, value: impl Into<Dimension>) {
-        let mutable_dimensions = self
-            .dimensions
-            .get_mut()
-            .expect("Mutex was unable to lock!");
-        mutable_dimensions.insert(name.into(), value.into());
+    pub fn dimension(&mut self, name: impl Into<Name>, value: impl Into<Dimension>) {
+        self.dimensions.insert(name.into(), value.into());
     }
 
     /// Record a measurement name and value pair - last write per metrics object wins!
     #[inline]
-    pub fn measurement(&self, name: impl Into<Name>, value: impl Into<Observation>) {
-        let mut mutable_measurements = self.measurements.lock().expect("Mutex was unable to lock!");
-        mutable_measurements.insert(name.into(), Measurement::Observation(value.into()));
-    }
-
-    /// Record a measurement name and value pair - last write per metrics object wins!
-    /// Prefer this when you have mut on Metrics. It's faster!
-    #[inline]
-    pub fn measurement_mut(&mut self, name: impl Into<Name>, value: impl Into<Observation>) {
-        let mutable_measurements = self
-            .measurements
-            .get_mut()
-            .expect("Mutex was unable to lock!");
-        mutable_measurements.insert(name.into(), Measurement::Observation(value.into()));
+    pub fn measurement(&mut self, name: impl Into<Name>, value: impl Into<Observation>) {
+        self.measurements.insert(name.into(), Measurement::Observation(value.into()));
     }
 
     /// Record a distribution name and value pair - last write per metrics object wins!
     /// Check out t-digests if you're using a goodmetrics + timescale downstream.
     #[inline]
-    pub fn distribution(&self, name: impl Into<Name>, value: impl Into<Distribution>) {
-        let mut mutable_measurements = self.measurements.lock().expect("Mutex was unable to lock!");
-        mutable_measurements.insert(name.into(), Measurement::Distribution(value.into()));
-    }
-
-    /// Record a distribution name and value pair - last write per metrics object wins!
-    /// Prefer this when you have mut on Metrics. It's faster!
-    /// Check out t-digests if you're using a goodmetrics + timescale downstream.
-    #[inline]
-    pub fn distribution_mut(&mut self, name: impl Into<Name>, value: impl Into<Distribution>) {
-        let mutable_measurements = self
-            .measurements
-            .get_mut()
-            .expect("Mutex was unable to lock!");
-        mutable_measurements.insert(name.into(), Measurement::Distribution(value.into()));
+    pub fn distribution(&mut self, name: impl Into<Name>, value: impl Into<Distribution>) {
+        self.measurements.insert(name.into(), Measurement::Distribution(value.into()));
     }
 
     /// Record a time distribution in nanoseconds.
