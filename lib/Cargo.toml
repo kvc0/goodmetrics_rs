@@ -34,14 +34,14 @@ log =  { version = "0.4" }
 
 futures = { version = "0.3" }
 futures-batch = { version = "0.6" }
-futures-timer = { version = "3.0" }
 
-tonic = { version = "0.10", features = ["tls"] }
-prost = { version = "0.12" }
 hyper = { version = "0.14" }
-tower = { version = "0.4" }
-tokio-rustls = { version = "0.24", features = ["dangerous_configuration"] }
 hyper-rustls = { version = "0.24", features = ["http2"] }
+prost = { version = "0.12" }
+tokio = { version = "1.33" }
+tokio-rustls = { version = "0.24", features = ["dangerous_configuration"] }
+tonic = { version = "0.10", features = ["tls"] }
+tower = { version = "0.4" }
 
 object-pool = { version = "0.5" }
 ordered-float = { version = "4.1" }
@@ -49,7 +49,7 @@ ordered-float = { version = "4.1" }
 [dev-dependencies]
 env_logger = { version = "0.10" }
 test-log = { version = "0.2" }
-tokio = { version = "1.21", features = ["rt-multi-thread"]}
+tokio = { version = "1.33", features = ["rt-multi-thread"]}
 tokio-test = { version = "0.4" }
 webpki-roots = { version = "0" }
 
