@@ -1,10 +1,24 @@
+use std::{
+    collections::HashMap,
+    sync::{mpsc::SyncSender, Arc, Mutex},
+    time::{Duration, SystemTime},
+};
+
+use tokio::time::MissedTickBehavior;
+
 use crate::{
     allocator::{
         returning_reference::{ReturnTarget, ReturningRef},
         MetricsAllocator, MetricsRef,
     },
+    gauge::StatisticSetGauge,
+    gauge_group::GaugeGroup,
     metrics::MetricsBehavior,
-    pipeline::Sink,
+    pipeline::{
+        aggregation::Aggregation,
+        aggregator::{AggregatedMetricsMap, DimensionPosition, DimensionedMeasurementsMap},
+        Sink,
+    },
     types::Name,
 };
 
@@ -13,6 +27,7 @@ pub struct MetricsFactory<TMetricsAllocator, TSink> {
     default_metrics_behavior: u32,
     sink: TSink,
     disabled: bool,
+    gauge_groups: Mutex<HashMap<Name, GaugeGroup>>,
 }
 
 impl<TMetricsAllocator, TSink> Clone for MetricsFactory<TMetricsAllocator, TSink>
@@ -28,6 +43,7 @@ where
             default_metrics_behavior: self.default_metrics_behavior,
             sink: self.sink.clone(),
             disabled: self.disabled,
+            gauge_groups: Default::default(),
         }
     }
 }
@@ -127,6 +143,82 @@ where
 }
 
 impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
+    /// Get a gauge within a group, of a particular name.
+    ///
+    /// Gauges are aggregated as StatisticSet and passed to your downstream collector.
+    ///
+    /// You should cache the gauge that this function gives you. Gauges are threadsafe and fully non-blocking,
+    /// but their registration and lifecycle are governed by Mutex.
+    ///
+    /// Gauges are less flexible than Metrics, but they can enable convenient high frequency recording.
+    pub fn gauge(
+        &self,
+        gauge_group: impl Into<Name>,
+        gauge_name: impl Into<Name>,
+    ) -> Arc<StatisticSetGauge> {
+        let mut locked_groups = self
+            .gauge_groups
+            .lock()
+            .expect("local mutex should not be poisoned");
+        let gauge_group = gauge_group.into();
+        match locked_groups.get_mut(&gauge_group) {
+            Some(group) => group.gauge(gauge_name),
+            None => {
+                let mut group = GaugeGroup::default();
+                let gauge = group.gauge(gauge_name);
+                locked_groups.insert(gauge_group, group);
+                gauge
+            }
+        }
+    }
+
+    /// You'll want to schedule this in your runtime if you are using Gauges.
+    pub async fn report_gauges_forever<TMakeBatchFunction, TBatch>(
+        &self,
+        period: Duration,
+        sender: SyncSender<TBatch>,
+        make_batch: TMakeBatchFunction,
+    ) where
+        TMakeBatchFunction:
+            Fn(SystemTime, Duration, &mut AggregatedMetricsMap) -> TBatch + Send + 'static,
+        TBatch: Send + 'static,
+    {
+        let mut interval = tokio::time::interval(period);
+        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            let now = SystemTime::now();
+            let mut gauges: AggregatedMetricsMap = self
+                .gauge_groups
+                .lock()
+                .expect("local mutex should not be poisoned")
+                .iter_mut()
+                .map(|(group_name, gauge_group)| {
+                    (
+                        group_name.to_owned(),
+                        DimensionedMeasurementsMap::from_iter(vec![(
+                            DimensionPosition::new(),
+                            gauge_group
+                                .reset()
+                                .map(|(name, statistic_set)| {
+                                    (name, Aggregation::StatisticSet(statistic_set))
+                                })
+                                .collect(),
+                        )]),
+                    )
+                })
+                .collect();
+            match sender.try_send(make_batch(now, period, &mut gauges)) {
+                Ok(_) => log::debug!("reported batch"),
+                Err(e) => {
+                    log::error!("could not report gauges: {e:?}")
+                }
+            }
+        }
+    }
+}
+
+impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
     pub fn disable(&mut self) {
         self.disabled = true
     }
@@ -156,6 +248,7 @@ where
                 .fold(0, |i, behavior| (i | (*behavior as u32))),
             sink,
             disabled: false,
+            gauge_groups: Default::default(),
         }
     }
 }
