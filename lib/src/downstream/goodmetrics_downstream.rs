@@ -4,8 +4,6 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use futures_timer::Delay;
-
 use crate::{
     pipeline::{
         aggregation::{
@@ -47,33 +45,33 @@ impl GoodmetricsDownstream {
     }
 
     pub async fn send_batches_forever(&mut self, receiver: Receiver<Vec<Datum>>) {
-        let interval = Duration::from_secs(1);
+        let mut interval = tokio::time::interval(Duration::from_millis(500));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
-            match receiver.try_recv() {
-                Ok(batch) => {
-                    let future = self.client.send_metrics(MetricsRequest {
+            interval.tick().await;
+            // Send as quickly as possible while there are more batches
+            while let Ok(batch) = receiver.try_recv() {
+                let result = self
+                    .client
+                    .send_metrics(MetricsRequest {
                         shared_dimensions: self.shared_dimensions.clone(),
                         metrics: batch,
-                    });
-                    match future.await {
-                        Ok(success) => {
-                            log::info!("sent metrics: {success:?}");
+                    })
+                    .await;
+                match result {
+                    Ok(success) => {
+                        log::debug!("sent metrics: {success:?}");
+                    }
+                    Err(err) => {
+                        if !err.metadata().is_empty() {
+                            log::error!(
+                                "failed to send metrics: {err}. Metadata: {:?}",
+                                err.metadata()
+                            );
                         }
-                        Err(err) => {
-                            if !err.metadata().is_empty() {
-                                log::error!(
-                                    "failed to send metrics: {err}. Metadata: {:?}",
-                                    err.metadata()
-                                );
-                            }
-                            log::error!("failed to send metrics: {err:?}")
-                        }
-                    };
-                }
-                Err(timeout) => {
-                    log::debug!("no metrics activity: {timeout}");
-                    Delay::new(interval).await;
-                }
+                        log::error!("failed to send metrics: {err:?}")
+                    }
+                };
             }
         }
     }
