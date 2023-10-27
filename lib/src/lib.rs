@@ -20,6 +20,8 @@
 
 pub mod allocator;
 pub mod downstream;
+pub mod gauge;
+pub mod gauge_group;
 pub mod metrics;
 pub mod metrics_factory;
 pub mod pipeline;
