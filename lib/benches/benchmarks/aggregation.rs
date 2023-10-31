@@ -1,6 +1,5 @@
 use std::{
     cmp::{max, min},
-    sync::mpsc::sync_channel,
     time::{Duration, Instant},
 };
 
@@ -14,6 +13,7 @@ use goodmetrics::{
         stream_sink::StreamSink,
     },
 };
+use tokio::sync::mpsc;
 
 pub fn aggregation(criterion: &mut Criterion) {
     // env_logger::builder().is_test(false).try_init().unwrap();
@@ -25,14 +25,17 @@ pub fn aggregation(criterion: &mut Criterion) {
     let aggregator = Aggregator::new(receiver, DistributionMode::Histogram);
     let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, StreamSink<_>> =
         MetricsFactory::new(sink);
-    let (batch_sender, _r) = sync_channel(128);
-    aggregator
-        .spawn_aggregation_thread(
-            Duration::from_secs(1),
-            batch_sender,
-            create_preaggregated_opentelemetry_batch,
-        )
-        .expect("it should spawn");
+    let (aggregated_batch_sender, _r) = mpsc::channel(128);
+    let metrics_runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .worker_threads(1)
+        .build()
+        .expect("I can make a runtime");
+    metrics_runtime.spawn(aggregator.aggregate_metrics_forever(
+        Duration::from_secs(1),
+        aggregated_batch_sender,
+        create_preaggregated_opentelemetry_batch,
+    ));
 
     for threads in [1, 2, 4, 8, 16] {
         group.bench_function(format!("concurrency-{threads:02}"), |bencher| {

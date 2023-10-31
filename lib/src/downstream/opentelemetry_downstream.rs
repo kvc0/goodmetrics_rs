@@ -1,9 +1,10 @@
 use std::{
     cmp::Reverse,
     collections::BinaryHeap,
-    sync::mpsc::Receiver,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+use tokio::sync::mpsc;
 
 use crate::pipeline::{aggregation::histogram::Histogram, aggregator::AggregatedMetricsMap};
 use crate::proto::opentelemetry::resource::v1::Resource;
@@ -52,13 +53,13 @@ impl OpenTelemetryDownstream {
         }
     }
 
-    pub async fn send_batches_forever(&mut self, receiver: Receiver<Vec<Metric>>) {
+    pub async fn send_batches_forever(mut self, mut receiver: mpsc::Receiver<Vec<Metric>>) {
         let mut interval = tokio::time::interval(Duration::from_millis(500));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
             // Send as quickly as possible while there are more batches
-            while let Ok(batch) = receiver.try_recv() {
+            while let Some(batch) = receiver.recv().await {
                 let result = self
                     .client
                     .export(ExportMetricsServiceRequest {
@@ -347,7 +348,9 @@ fn as_otel_histogram(
 
 #[cfg(test)]
 mod test {
-    use std::{sync::mpsc, time::Duration};
+    use std::time::Duration;
+
+    use tokio::sync::mpsc;
 
     use crate::{
         downstream::{
@@ -367,30 +370,26 @@ mod test {
     async fn downstream_is_runnable() {
         let (_sink, receiver) = StreamSink::<Box<Metrics>>::new();
         let aggregator = Aggregator::new(receiver, DistributionMode::Histogram);
-        let (batch_sender, batch_receiver) = mpsc::sync_channel(128);
+        let (batch_sender, batch_receiver) = mpsc::channel(128);
 
-        let mut downstream = OpenTelemetryDownstream::new(
+        let downstream = OpenTelemetryDownstream::new(
             get_channel("localhost:6379", || None, None).await.expect(
                 "i can make a channel to localhost even though it probably isn't listening",
             ),
             None,
         );
 
-        let (aggregator_handle, cancel_aggregator) = aggregator
-            .spawn_aggregation_thread(
-                Duration::from_millis(10),
-                batch_sender,
-                create_preaggregated_opentelemetry_batch,
-            )
-            .expect("I can spawn threads");
-
         let metrics_tasks = tokio::task::LocalSet::new();
 
+        let aggregator_handle = metrics_tasks.spawn_local(aggregator.aggregate_metrics_forever(
+            Duration::from_millis(10),
+            batch_sender,
+            create_preaggregated_opentelemetry_batch,
+        ));
         let downstream_joiner = metrics_tasks
             .spawn_local(async move { downstream.send_batches_forever(batch_receiver).await });
 
-        cancel_aggregator.store(true, std::sync::atomic::Ordering::Relaxed);
-        aggregator_handle.join().expect("can join");
+        aggregator_handle.abort();
         downstream_joiner.abort();
         metrics_tasks.await;
     }

@@ -1,8 +1,9 @@
 use std::{
     collections::HashMap,
-    sync::mpsc::Receiver,
     time::{Duration, SystemTime},
 };
+
+use tokio::sync::mpsc;
 
 use crate::{
     pipeline::{
@@ -44,13 +45,13 @@ impl GoodmetricsDownstream {
         }
     }
 
-    pub async fn send_batches_forever(&mut self, receiver: Receiver<Vec<Datum>>) {
+    pub async fn send_batches_forever(mut self, mut receiver: mpsc::Receiver<Vec<Datum>>) {
         let mut interval = tokio::time::interval(Duration::from_millis(500));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
             // Send as quickly as possible while there are more batches
-            while let Ok(batch) = receiver.try_recv() {
+            while let Some(batch) = receiver.recv().await {
                 let result = self
                     .client
                     .send_metrics(MetricsRequest {

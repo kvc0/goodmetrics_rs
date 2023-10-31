@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{mpsc, Arc},
-    time::Duration,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use criterion::Criterion;
 use hyper::{header::HeaderName, http::HeaderValue};
@@ -19,7 +15,7 @@ use goodmetrics::{
         stream_sink::StreamSink,
     },
 };
-use tokio::task::LocalSet;
+use tokio::{join, sync::mpsc};
 
 #[allow(clippy::unwrap_used)]
 pub fn goodmetrics_demo(criterion: &mut Criterion) {
@@ -32,16 +28,9 @@ pub fn goodmetrics_demo(criterion: &mut Criterion) {
     // Set up the bridge between application metrics threads and the metrics downstream thread
     let (sink, receiver) = StreamSink::new();
     let aggregator = Aggregator::new(receiver, DistributionMode::TDigest);
-    let (sender, receiver) = mpsc::sync_channel(128);
+    let (aggregated_batch_sender, receiver) = mpsc::channel(128);
 
     // Configure downstream metrics thread tasks
-    aggregator
-        .spawn_aggregation_thread(
-            Duration::from_secs(1),
-            sender,
-            create_preaggregated_goodmetrics_batch,
-        )
-        .expect("it should spawn");
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -58,18 +47,19 @@ pub fn goodmetrics_demo(criterion: &mut Criterion) {
             )
             .await
             .expect("i can make a channel to goodmetrics");
-            let mut downstream = GoodmetricsDownstream::new(
+            let downstream = GoodmetricsDownstream::new(
                 channel,
                 HashMap::from_iter(vec![("application".to_string(), "bench".to_string())]),
             );
 
-            let metrics_tasks = LocalSet::new();
-
-            metrics_tasks.spawn_local(async move {
-                downstream.send_batches_forever(receiver).await;
-            });
-
-            metrics_tasks.await;
+            join!(
+                aggregator.aggregate_metrics_forever(
+                    Duration::from_secs(1),
+                    aggregated_batch_sender,
+                    create_preaggregated_goodmetrics_batch
+                ),
+                downstream.send_batches_forever(receiver),
+            );
         });
     });
 
