@@ -25,8 +25,8 @@ use crate::{
 /// Example complete preaggregated metrics pipeline setup, with gauge support:
 ///
 /// ```
-/// # #[tokio::main]
-/// # async fn main() {
+/// # let runtime = tokio::runtime::Builder::new_current_thread().build().expect("runtime can be built");
+/// # runtime.block_on(async {
 /// use goodmetrics::allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator;
 /// use goodmetrics::downstream::goodmetrics_downstream::create_preaggregated_goodmetrics_batch;
 /// use goodmetrics::downstream::goodmetrics_downstream::GoodmetricsDownstream;
@@ -72,7 +72,7 @@ use crate::{
 /// );
 ///
 /// // Now you use your metrics_factory and clone the Arc around wherever you need it
-/// # }
+/// # });
 /// ```
 pub struct MetricsFactory<TMetricsAllocator, TSink> {
     allocator: TMetricsAllocator,
