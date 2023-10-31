@@ -21,26 +21,32 @@ use crate::{
     types::{Dimension, Distribution, Measurement, Name, Observation},
 };
 
-use super::{channel_connection::ChannelType, EpochTime};
+use super::{EpochTime, StdError};
 
 /// A downstream that sends metrics to a `goodmetricsd` or other goodmetrics grpc server.
-pub struct GoodmetricsDownstream {
-    client: MetricsClient<ChannelType>,
+pub struct GoodmetricsDownstream<TChannel> {
+    client: MetricsClient<TChannel>,
     shared_dimensions: HashMap<String, proto::goodmetrics::Dimension>,
 }
 
-impl GoodmetricsDownstream {
+impl<TChannel> GoodmetricsDownstream<TChannel>
+where
+    TChannel: tonic::client::GrpcService<tonic::body::BoxBody>,
+    TChannel::Error: Into<StdError>,
+    TChannel::ResponseBody: http_body::Body<Data = bytes::Bytes> + Send + 'static,
+    <TChannel::ResponseBody as http_body::Body>::Error: Into<StdError> + Send,
+{
     pub fn new(
-        channel: ChannelType,
-        shared_dimensions: HashMap<String, impl Into<Dimension>>,
+        channel: TChannel,
+        shared_dimensions: impl IntoIterator<Item = (impl Into<String>, impl Into<Dimension>)>,
     ) -> Self {
-        let client: MetricsClient<ChannelType> = MetricsClient::new(channel);
+        let client: MetricsClient<TChannel> = MetricsClient::new(channel);
 
         GoodmetricsDownstream {
             client,
             shared_dimensions: shared_dimensions
                 .into_iter()
-                .map(|(k, v)| (k, v.into().into()))
+                .map(|(k, v)| (k.into(), v.into().into()))
                 .collect(),
         }
     }

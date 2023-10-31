@@ -61,7 +61,6 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
                     .expect("access token must be headerizable"),
                 )),
             )
-            .await
             .expect("i can make a channel to lightstep");
             let downstream = OpenTelemetryDownstream::new(
                 channel,

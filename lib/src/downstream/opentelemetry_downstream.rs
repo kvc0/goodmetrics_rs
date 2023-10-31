@@ -29,23 +29,29 @@ use crate::{
     types::{Dimension, Name},
 };
 
-use super::{channel_connection::ChannelType, EpochTime};
+use super::{EpochTime, StdError};
 
 // anything other than Delta is bugged by design. So yeah, opentelemetry metrics spec is bugged by design.
 const THE_ONLY_SANE_TEMPORALITY: i32 = AggregationTemporality::Delta as i32;
 
 /// Compatibility adapter downstream for OTLP. No dependency on opentelemetry code,
 /// only their protos. All your measurements will be Delta temporality.
-pub struct OpenTelemetryDownstream {
-    client: MetricsServiceClient<ChannelType>,
+pub struct OpenTelemetryDownstream<TChannel> {
+    client: MetricsServiceClient<TChannel>,
     shared_dimensions: Option<Vec<KeyValue>>,
 }
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
-impl OpenTelemetryDownstream {
-    pub fn new(channel: ChannelType, shared_dimensions: Option<DimensionPosition>) -> Self {
-        let client: MetricsServiceClient<ChannelType> = MetricsServiceClient::new(channel);
+impl<TChannel> OpenTelemetryDownstream<TChannel>
+where
+    TChannel: tonic::client::GrpcService<tonic::body::BoxBody>,
+    TChannel::Error: Into<StdError>,
+    TChannel::ResponseBody: http_body::Body<Data = bytes::Bytes> + Send + 'static,
+    <TChannel::ResponseBody as http_body::Body>::Error: Into<StdError> + Send,
+{
+    pub fn new(channel: TChannel, shared_dimensions: Option<DimensionPosition>) -> Self {
+        let client: MetricsServiceClient<TChannel> = MetricsServiceClient::new(channel);
 
         OpenTelemetryDownstream {
             client,
@@ -373,7 +379,7 @@ mod test {
         let (batch_sender, batch_receiver) = mpsc::channel(128);
 
         let downstream = OpenTelemetryDownstream::new(
-            get_channel("localhost:6379", || None, None).await.expect(
+            get_channel("localhost:6379", || None, None).expect(
                 "i can make a channel to localhost even though it probably isn't listening",
             ),
             None,

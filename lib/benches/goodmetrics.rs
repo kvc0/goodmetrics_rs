@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use criterion::Criterion;
 use hyper::{header::HeaderName, http::HeaderValue};
@@ -45,12 +45,8 @@ pub fn goodmetrics_demo(criterion: &mut Criterion) {
                     HeaderValue::try_from(auth).expect("invalid authorization value"),
                 )),
             )
-            .await
             .expect("i can make a channel to goodmetrics");
-            let downstream = GoodmetricsDownstream::new(
-                channel,
-                HashMap::from_iter(vec![("application".to_string(), "bench".to_string())]),
-            );
+            let downstream = GoodmetricsDownstream::new(channel, [("application", "bench")]);
 
             join!(
                 aggregator.aggregate_metrics_forever(

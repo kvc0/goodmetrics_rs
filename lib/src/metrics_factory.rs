@@ -1,10 +1,10 @@
 use std::{
     collections::HashMap,
-    sync::{mpsc::SyncSender, Arc, Mutex},
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
 
-use tokio::time::MissedTickBehavior;
+use tokio::{sync::mpsc, time::MissedTickBehavior};
 
 use crate::{
     allocator::{
@@ -22,6 +22,58 @@ use crate::{
     types::Name,
 };
 
+/// Example complete preaggregated metrics pipeline setup, with gauge support:
+///
+/// ```
+/// # #[tokio::main]
+/// # async fn main() {
+/// use goodmetrics::allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator;
+/// use goodmetrics::downstream::goodmetrics_downstream::create_preaggregated_goodmetrics_batch;
+/// use goodmetrics::downstream::goodmetrics_downstream::GoodmetricsDownstream;
+/// use goodmetrics::metrics::Metrics;
+/// use goodmetrics::metrics_factory::MetricsFactory;
+/// use goodmetrics::pipeline::aggregator::Aggregator;
+/// use goodmetrics::pipeline::aggregator::DistributionMode;
+/// use goodmetrics::pipeline::stream_sink::StreamSink;
+///
+/// // 1. Make your metrics factory:
+/// let (metrics_sink, raw_metrics_receiver) = StreamSink::new();
+/// let aggregator = Aggregator::new(raw_metrics_receiver, DistributionMode::Histogram);
+/// let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, StreamSink<Metrics>> = MetricsFactory::new(metrics_sink);
+/// let metrics_factory = std::sync::Arc::new(metrics_factory); // For sharing around!
+///
+/// // 2. Configure your delivery pipeline:
+/// let downstream = GoodmetricsDownstream::new(
+///     tonic::transport::Channel::from_static("https://[::1]:50051").connect_lazy(),
+///     [("application", "example")],
+/// );
+///
+/// // 3. Configure your background jobs:
+/// let (aggregated_batch_sender, aggregated_batch_receiver) = tokio::sync::mpsc::channel(128);
+/// // Configure Aggregator cadence and protocol.
+/// tokio::task::spawn(
+///     aggregator.aggregate_metrics_forever(
+///         std::time::Duration::from_secs(1),
+///         aggregated_batch_sender.clone(),
+///         create_preaggregated_goodmetrics_batch,
+///     )
+/// );
+/// // Send batches to the downstream collector, whatever you have.
+/// tokio::task::spawn(
+///     downstream.send_batches_forever(aggregated_batch_receiver)
+/// );
+/// // Register the gauge task for this metrics factory.
+/// tokio::task::spawn(
+///     metrics_factory.clone().report_gauges_forever(
+///         std::time::Duration::from_secs(1),
+///         aggregated_batch_sender,
+///         create_preaggregated_goodmetrics_batch,
+///     )
+/// );
+///
+/// // Now you use your metrics_factory and clone the Arc around wherever you need it
+/// # }
+/// ```
 pub struct MetricsFactory<TMetricsAllocator, TSink> {
     allocator: TMetricsAllocator,
     default_metrics_behavior: u32,
@@ -174,9 +226,9 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
 
     /// You'll want to schedule this in your runtime if you are using Gauges.
     pub async fn report_gauges_forever<TMakeBatchFunction, TBatch>(
-        &self,
+        self: Arc<Self>,
         period: Duration,
-        sender: SyncSender<TBatch>,
+        sender: mpsc::Sender<TBatch>,
         make_batch: TMakeBatchFunction,
     ) where
         TMakeBatchFunction:
