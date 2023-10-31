@@ -4,6 +4,8 @@ pub mod channel_connection;
 pub mod goodmetrics_downstream;
 pub mod opentelemetry_downstream;
 
+pub type StdError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
 pub trait EpochTime {
     fn nanos_since_epoch(&self) -> u64;
 }

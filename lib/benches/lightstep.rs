@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::{sync::mpsc, time::Duration};
+use std::time::Duration;
 
 use criterion::Criterion;
 use goodmetrics::allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator;
@@ -17,7 +17,8 @@ use goodmetrics::{
     metrics_factory::{MetricsFactory, RecordingScope},
     pipeline::aggregator::{Aggregator, DistributionMode},
 };
-use tokio::task::LocalSet;
+use tokio::join;
+use tokio::sync::mpsc;
 use tokio_rustls::rustls::{OwnedTrustAnchor, RootCertStore};
 
 #[allow(clippy::unwrap_used)]
@@ -27,16 +28,9 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
     // Set up the bridge between application metrics threads and the metrics downstream thread
     let (sink, receiver) = StreamSink::new();
     let aggregator = Aggregator::new(receiver, DistributionMode::Histogram);
-    let (sender, receiver) = mpsc::sync_channel(128);
+    let (aggregated_batch_sender, receiver) = mpsc::channel(128);
 
     // Configure downstream metrics thread tasks
-    aggregator
-        .spawn_aggregation_thread(
-            Duration::from_secs(1),
-            sender,
-            create_preaggregated_opentelemetry_batch,
-        )
-        .expect("it should spawn");
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -67,9 +61,8 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
                     .expect("access token must be headerizable"),
                 )),
             )
-            .await
             .expect("i can make a channel to lightstep");
-            let mut downstream = OpenTelemetryDownstream::new(
+            let downstream = OpenTelemetryDownstream::new(
                 channel,
                 Some(BTreeMap::from_iter(vec![(
                     Name::from("name"),
@@ -77,13 +70,14 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
                 )])),
             );
 
-            let metrics_tasks = LocalSet::new();
-
-            metrics_tasks.spawn_local(async move {
-                downstream.send_batches_forever(receiver).await;
-            });
-
-            metrics_tasks.await;
+            let _ = join!(
+                aggregator.aggregate_metrics_forever(
+                    Duration::from_secs(1),
+                    aggregated_batch_sender,
+                    create_preaggregated_opentelemetry_batch
+                ),
+                downstream.send_batches_forever(receiver),
+            );
         });
     });
 

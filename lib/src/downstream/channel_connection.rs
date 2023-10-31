@@ -10,6 +10,8 @@ use tokio_rustls::rustls::{client::ServerCertVerifier, ClientConfig, RootCertSto
 use tonic::body::BoxBody;
 use tower::{buffer::Buffer, util::BoxService, ServiceExt};
 
+use super::StdError;
+
 pub type ChannelType =
     Buffer<BoxService<Request<BoxBody>, Response<Body>, Error>, Request<BoxBody>>;
 
@@ -32,11 +34,11 @@ pub type ChannelType =
 /// }
 /// ;
 /// ```
-pub async fn get_channel<TrustFunction>(
+pub fn get_channel<TrustFunction>(
     endpoint: &str,
     tls_trust: TrustFunction,
     header: Option<(HeaderName, HeaderValue)>,
-) -> Result<ChannelType, Box<dyn std::error::Error>>
+) -> Result<ChannelType, StdError>
 where
     TrustFunction: FnOnce() -> Option<RootCertStore>,
 {
@@ -103,7 +105,6 @@ where
         })
         .service(https_client)
         .boxed();
-
     Ok(Buffer::new(service, 1024))
 }
 

@@ -1,10 +1,10 @@
-use std::sync::mpsc;
+use tokio::sync::mpsc;
 
 use super::Sink;
 
 #[derive(Debug)]
 pub struct StreamSink<TMetricsRef> {
-    queue: mpsc::SyncSender<TMetricsRef>,
+    queue: mpsc::Sender<TMetricsRef>,
 }
 
 impl<TMetricsRef> Clone for StreamSink<TMetricsRef> {
@@ -17,7 +17,7 @@ impl<TMetricsRef> Clone for StreamSink<TMetricsRef> {
 
 impl<TMetricsRef> StreamSink<TMetricsRef> {
     pub fn new() -> (Self, mpsc::Receiver<TMetricsRef>) {
-        let (sender, receiver) = mpsc::sync_channel(1024);
+        let (sender, receiver) = mpsc::channel(1024);
 
         (Self { queue: sender }, receiver)
     }

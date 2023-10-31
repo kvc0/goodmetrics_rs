@@ -1,13 +1,10 @@
 use std::{
     collections::{BTreeMap, HashMap},
     mem::replace,
-    sync::{
-        atomic::{AtomicBool, AtomicUsize},
-        mpsc::{self, SyncSender},
-        Arc,
-    },
     time::{Duration, Instant, SystemTime},
 };
+
+use tokio::{select, sync::mpsc};
 
 use crate::{
     allocator::MetricsRef,
@@ -105,36 +102,12 @@ where
         }
     }
 
-    pub fn spawn_aggregation_thread<TMakeBatchFunction, TBatch>(
-        self,
-        cadence: Duration,
-        sender: SyncSender<TBatch>,
-        make_batch: TMakeBatchFunction,
-    ) -> Result<(std::thread::JoinHandle<()>, Arc<AtomicBool>), std::io::Error>
-    where
-        TMakeBatchFunction:
-            Fn(SystemTime, Duration, &mut AggregatedMetricsMap) -> TBatch + Send + 'static,
-        TBatch: Send + 'static,
-    {
-        let abort = Arc::new(AtomicBool::new(false));
-        static I: AtomicUsize = AtomicUsize::new(0);
-        let thread_id = I.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let thread_abort = abort.clone();
-        std::thread::Builder::new()
-            .name(format!("aggregator-{thread_id}"))
-            .spawn(move || {
-                self.aggregate_metrics_forever(thread_abort, cadence, sender, make_batch);
-            })
-            .map(|handle| (handle, abort))
-    }
-
-    /// This consumes the calling thread forever. You might want to dedicate one.
-    /// Consider calling spawn_aggregation_thread instead.
-    pub fn aggregate_metrics_forever<TMakeBatchFunction, TBatch>(
+    /// This task runs a lot. You might want to have a separate 1-2 thread runtime for metrics tasks.
+    /// Note that this depends on tokio and the `time` feature.
+    pub async fn aggregate_metrics_forever<TMakeBatchFunction, TBatch>(
         mut self,
-        abort: Arc<AtomicBool>,
         cadence: Duration,
-        sender: SyncSender<TBatch>,
+        sender: mpsc::Sender<TBatch>,
         make_batch: TMakeBatchFunction,
     ) where
         TMakeBatchFunction: Fn(SystemTime, Duration, &mut AggregatedMetricsMap) -> TBatch,
@@ -147,15 +120,11 @@ where
             .expect("could not get system time")
             .as_millis()
             % cadence.as_millis();
-        std::thread::sleep(Duration::from_millis(extra_start_offset as u64));
+        tokio::time::sleep(Duration::from_millis(extra_start_offset as u64)).await;
         let mut last_emit = self.now_timer();
 
         loop {
-            if abort.load(std::sync::atomic::Ordering::Relaxed) {
-                log::info!("quitting aggregator");
-                break;
-            }
-            self.receive_until_next_batch(last_emit, cadence);
+            self.receive_until_next_batch(last_emit, cadence).await;
 
             last_emit = self.now_timer();
             if let Some(batch) = self.drain_into(self.now_wall_clock(), cadence, &make_batch) {
@@ -171,7 +140,7 @@ where
         }
     }
 
-    fn receive_until_next_batch(&mut self, last_emit: Instant, cadence: Duration) {
+    async fn receive_until_next_batch(&mut self, last_emit: Instant, cadence: Duration) {
         let mut look_for_more = true;
         while look_for_more {
             let now = self.now_timer();
@@ -179,20 +148,23 @@ where
                 .checked_duration_since(last_emit)
                 .and_then(|latency| cadence.checked_sub(latency))
             {
-                Some(wait_for) => self.receive_one(wait_for),
+                Some(wait_for) => self.receive_one(wait_for).await,
                 None => false,
             }
         }
     }
 
-    fn receive_one(&mut self, wait_for: Duration) -> bool {
-        match self.metrics_queue.recv_timeout(wait_for) {
-            Ok(more) => {
-                self.aggregate_metrics(more);
-                true
+    async fn receive_one(&mut self, wait_for: Duration) -> bool {
+        select! {
+            next = self.metrics_queue.recv() => {
+                if let Some(more) = next {
+                    self.aggregate_metrics(more);
+                    true
+                } else {
+                    false
+                }
             }
-            Err(e) => {
-                log::trace!("done waiting: {e:?}");
+            _ = tokio::time::sleep(wait_for) => {
                 false
             }
         }
@@ -338,9 +310,10 @@ fn accumulate_statisticset(
 mod test {
     use std::{
         collections::{BTreeMap, HashMap},
-        sync::mpsc::sync_channel,
         time::{Duration, SystemTime},
     };
+
+    use tokio::sync::mpsc::channel;
 
     use crate::{
         allocator::{always_new_metrics_allocator::AlwaysNewMetricsAllocator, MetricsAllocator},
@@ -351,17 +324,24 @@ mod test {
 
     use super::DimensionedMeasurementsMap;
 
-    #[test_log::test]
-    fn test_aggregation() {
-        let (sender, receiver) = sync_channel(16);
+    #[test_log::test(tokio::test())]
+    async fn test_aggregation() {
+        let (sender, receiver) = channel(16);
         let mut sink: Aggregator<Metrics> = Aggregator::new(receiver, DistributionMode::Histogram);
 
-        sender.send(get_metrics("a", "dimension", "v", 22)).unwrap();
-        sender.send(get_metrics("a", "dimension", "v", 20)).unwrap();
+        sender
+            .try_send(get_metrics("a", "dimension", "v", 22))
+            .unwrap();
+        sender
+            .try_send(get_metrics("a", "dimension", "v", 20))
+            .unwrap();
 
-        assert!(sink.receive_one(Duration::from_millis(1)));
-        assert!(sink.receive_one(Duration::from_millis(1)));
-        assert!(!sink.receive_one(Duration::from_millis(1)), "I only sent 2");
+        assert!(sink.receive_one(Duration::from_millis(1)).await);
+        assert!(sink.receive_one(Duration::from_millis(1)).await);
+        assert!(
+            !sink.receive_one(Duration::from_millis(1)).await,
+            "I only sent 2"
+        );
 
         let map = sink.map;
         assert_eq!(
@@ -384,17 +364,24 @@ mod test {
         )
     }
 
-    #[test_log::test]
-    fn test_draining() {
-        let (sender, receiver) = sync_channel(16);
+    #[test_log::test(tokio::test)]
+    async fn test_draining() {
+        let (sender, receiver) = channel(16);
         let mut sink: Aggregator<Metrics> = Aggregator::new(receiver, DistributionMode::Histogram);
 
-        sender.send(get_metrics("a", "dimension", "v", 22)).unwrap();
-        sender.send(get_metrics("a", "dimension", "v", 20)).unwrap();
+        sender
+            .try_send(get_metrics("a", "dimension", "v", 22))
+            .unwrap();
+        sender
+            .try_send(get_metrics("a", "dimension", "v", 20))
+            .unwrap();
 
-        assert!(sink.receive_one(Duration::from_millis(1)));
-        assert!(sink.receive_one(Duration::from_millis(1)));
-        assert!(!sink.receive_one(Duration::from_millis(1)), "I only sent 2");
+        assert!(sink.receive_one(Duration::from_millis(1)).await);
+        assert!(sink.receive_one(Duration::from_millis(1)).await);
+        assert!(
+            !sink.receive_one(Duration::from_millis(1)).await,
+            "I only sent 2"
+        );
 
         let transformed: Vec<(Name, DimensionedMeasurementsMap)> = sink
             .drain_into(

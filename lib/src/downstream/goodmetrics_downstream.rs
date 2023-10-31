@@ -1,8 +1,9 @@
 use std::{
     collections::HashMap,
-    sync::mpsc::Receiver,
     time::{Duration, SystemTime},
 };
+
+use tokio::sync::mpsc;
 
 use crate::{
     pipeline::{
@@ -20,37 +21,43 @@ use crate::{
     types::{Dimension, Distribution, Measurement, Name, Observation},
 };
 
-use super::{channel_connection::ChannelType, EpochTime};
+use super::{EpochTime, StdError};
 
 /// A downstream that sends metrics to a `goodmetricsd` or other goodmetrics grpc server.
-pub struct GoodmetricsDownstream {
-    client: MetricsClient<ChannelType>,
+pub struct GoodmetricsDownstream<TChannel> {
+    client: MetricsClient<TChannel>,
     shared_dimensions: HashMap<String, proto::goodmetrics::Dimension>,
 }
 
-impl GoodmetricsDownstream {
+impl<TChannel> GoodmetricsDownstream<TChannel>
+where
+    TChannel: tonic::client::GrpcService<tonic::body::BoxBody>,
+    TChannel::Error: Into<StdError>,
+    TChannel::ResponseBody: http_body::Body<Data = bytes::Bytes> + Send + 'static,
+    <TChannel::ResponseBody as http_body::Body>::Error: Into<StdError> + Send,
+{
     pub fn new(
-        channel: ChannelType,
-        shared_dimensions: HashMap<String, impl Into<Dimension>>,
+        channel: TChannel,
+        shared_dimensions: impl IntoIterator<Item = (impl Into<String>, impl Into<Dimension>)>,
     ) -> Self {
-        let client: MetricsClient<ChannelType> = MetricsClient::new(channel);
+        let client: MetricsClient<TChannel> = MetricsClient::new(channel);
 
         GoodmetricsDownstream {
             client,
             shared_dimensions: shared_dimensions
                 .into_iter()
-                .map(|(k, v)| (k, v.into().into()))
+                .map(|(k, v)| (k.into(), v.into().into()))
                 .collect(),
         }
     }
 
-    pub async fn send_batches_forever(&mut self, receiver: Receiver<Vec<Datum>>) {
+    pub async fn send_batches_forever(mut self, mut receiver: mpsc::Receiver<Vec<Datum>>) {
         let mut interval = tokio::time::interval(Duration::from_millis(500));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
             // Send as quickly as possible while there are more batches
-            while let Ok(batch) = receiver.try_recv() {
+            while let Some(batch) = receiver.recv().await {
                 let result = self
                     .client
                     .send_metrics(MetricsRequest {
