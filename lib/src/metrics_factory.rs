@@ -128,7 +128,7 @@ impl<'a, TMetricsRef, TMetricsAllocator, TSink> ReturnTarget<'a, TMetricsRef>
     for MetricsFactory<TMetricsAllocator, TSink>
 where
     TMetricsRef: MetricsRef + 'a,
-    TMetricsAllocator: MetricsAllocator<'a, TMetricsRef> + Default,
+    TMetricsAllocator: MetricsAllocator<'a, TMetricsRef>,
     TSink: Sink<TMetricsRef>,
 {
     fn return_referent(&self, to_return: TMetricsRef) {
@@ -141,7 +141,7 @@ impl<'a, TMetricsRef, TMetricsAllocator, TSink> RecordingScope<'a, TMetricsRef>
 where
     TMetricsRef: MetricsRef + 'a,
     TSink: Sink<TMetricsRef>,
-    TMetricsAllocator: MetricsAllocator<'a, TMetricsRef> + Default,
+    TMetricsAllocator: MetricsAllocator<'a, TMetricsRef>,
 {
     #[inline]
     fn record_scope(&'a self, scope_name: impl Into<Name>) -> ReturningRef<'a, TMetricsRef, Self> {
@@ -287,7 +287,9 @@ where
     pub fn new_with_behaviors(sink: TSink, behaviors: &[MetricsBehavior]) -> Self {
         MetricsFactory::new_with_allocator(sink, behaviors, Default::default())
     }
+}
 
+impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
     pub fn new_with_allocator(
         sink: TSink,
         behaviors: &[MetricsBehavior],
@@ -318,7 +320,10 @@ where
 #[cfg(test)]
 mod test {
     use crate::{
-        allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator,
+        allocator::{
+            always_new_metrics_allocator::AlwaysNewMetricsAllocator,
+            arc_allocator::{ArcAllocator, CachedMetrics},
+        },
         metrics::{Metrics, MetricsBehavior},
         metrics_factory::RecordingScope,
         pipeline::{
@@ -375,6 +380,26 @@ mod test {
                 stream_sink,
                 &[MetricsBehavior::Default],
                 AlwaysNewMetricsAllocator::default(),
+            );
+        #[allow(clippy::redundant_clone)]
+        let cloned = metrics_factory.clone();
+        {
+            let metrics = metrics_factory.record_scope("test");
+            metrics.dimension("some dimension", "a dim");
+        }
+
+        let _metrics_that_shares_the_sink = cloned.record_scope("scope_name");
+    }
+
+    #[test_log::test]
+    fn aggregating_metrics_factory_with_arc_allocator() {
+        let (stream_sink, receiver) = StreamSink::new();
+        let _aggregator = Aggregator::new(receiver, DistributionMode::Histogram);
+        let metrics_factory: MetricsFactory<ArcAllocator<_>, StreamSink<CachedMetrics<_>>> =
+            MetricsFactory::new_with_allocator(
+                stream_sink,
+                &[MetricsBehavior::Default],
+                ArcAllocator::new(1024),
             );
         #[allow(clippy::redundant_clone)]
         let cloned = metrics_factory.clone();

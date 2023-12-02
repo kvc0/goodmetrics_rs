@@ -24,9 +24,9 @@ pub type ChannelType =
 ///     store.add_server_trust_anchors(
 ///         webpki_roots::TLS_SERVER_ROOTS.iter().map(|trust_anchor| {
 ///             tokio_rustls::rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-///                 trust_anchor.subject,
-///                 trust_anchor.spki,
-///                 trust_anchor.name_constraints
+///                 trust_anchor.subject.to_vec(),
+///                 trust_anchor.subject_public_key_info.to_vec(),
+///                 trust_anchor.name_constraints.as_ref().map(|der| der.to_vec())
 ///             )
 ///         })
 ///     );

@@ -3,6 +3,7 @@ use std::collections::hash_map::RandomState;
 use crate::{metrics::Metrics, types::Name};
 
 pub mod always_new_metrics_allocator;
+pub mod arc_allocator;
 pub mod returning_reference;
 
 pub mod pooled_metrics_allocator;
