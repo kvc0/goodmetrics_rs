@@ -27,7 +27,14 @@ struct AllocatorState<TBuildHasher: Send> {
     cache_clock: AtomicUsize,
 }
 
-pub type ArcMetrics<TBuildHasher> = Arc<Metrics<TBuildHasher>>;
+impl<TBuildHasher> Default for ArcAllocator<TBuildHasher>
+where
+    TBuildHasher: BuildHasher + Default + Send + 'static,
+{
+    fn default() -> Self {
+        Self::new(1024)
+    }
+}
 
 impl<TBuildHasher> ArcAllocator<TBuildHasher>
 where
