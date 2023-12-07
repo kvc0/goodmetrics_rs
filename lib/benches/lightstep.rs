@@ -44,9 +44,12 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
                     store.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(
                         |trust_anchor| {
                             OwnedTrustAnchor::from_subject_spki_name_constraints(
-                                trust_anchor.subject,
-                                trust_anchor.spki,
-                                trust_anchor.name_constraints,
+                                trust_anchor.subject.to_vec(),
+                                trust_anchor.subject_public_key_info.to_vec(),
+                                trust_anchor
+                                    .name_constraints
+                                    .as_ref()
+                                    .map(|der| der.to_vec()),
                             )
                         },
                     ));
@@ -93,7 +96,7 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
         bencher.iter(|| {
             i += 1;
 
-            let metrics = metrics_factory.record_scope("demo");
+            let mut metrics = metrics_factory.record_scope("demo");
             let _scope = metrics.time("timed_delay");
             metrics.measurement("ran", 1);
             metrics.dimension("mod", i % 8);

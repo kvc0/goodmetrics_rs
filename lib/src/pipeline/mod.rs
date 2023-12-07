@@ -66,6 +66,12 @@ impl AbsorbDistribution for HashMap<i64, u64> {
                         .or_insert(1);
                 });
             }
+            types::Distribution::Timer { nanos } => {
+                let v = nanos.load(std::sync::atomic::Ordering::Acquire);
+                self.entry(bucket_10_2_sigfigs(v as i64))
+                    .and_modify(|count| *count += 1)
+                    .or_insert(1);
+            }
         };
     }
 }
@@ -79,6 +85,9 @@ impl AbsorbDistribution for OnlineTdigest {
             types::Distribution::U32(i) => self.observe_mut(i),
             types::Distribution::Collection(collection) => {
                 collection.iter().for_each(|i| self.observe_mut(*i as f64));
+            }
+            types::Distribution::Timer { nanos } => {
+                self.observe_mut(nanos.load(std::sync::atomic::Ordering::Acquire) as f64)
             }
         };
     }

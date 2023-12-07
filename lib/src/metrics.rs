@@ -1,11 +1,12 @@
 use std::{
-    collections::{self, BTreeMap, HashMap},
+    collections::{self, HashMap},
     fmt::Display,
     hash::BuildHasher,
-    mem::ManuallyDrop,
-    sync::Mutex,
+    sync::{atomic::AtomicUsize, Arc},
     time::Instant,
 };
+
+use futures::channel::oneshot;
 
 use crate::types::{Dimension, Distribution, Measurement, Name, Observation};
 
@@ -41,9 +42,58 @@ pub enum MetricsBehavior {
 pub struct Metrics<TBuildHasher = collections::hash_map::RandomState> {
     pub(crate) metrics_name: Name,
     pub(crate) start_time: Instant,
-    dimensions: Mutex<BTreeMap<Name, Dimension>>,
-    measurements: Mutex<HashMap<Name, Measurement, TBuildHasher>>,
+    dimensions: HashMap<Name, Dimension, TBuildHasher>,
+    measurements: HashMap<Name, Measurement, TBuildHasher>,
+    dimension_guards: Vec<OverrideDimension>,
     pub(crate) behaviors: u32,
+}
+
+#[derive(Debug)]
+pub struct DimensionGuard {
+    override_sender: oneshot::Sender<Dimension>,
+}
+impl DimensionGuard {
+    fn new(name: Name, default: Dimension) -> (Self, OverrideDimension) {
+        let (override_sender, override_receiver) = oneshot::channel();
+        (
+            Self { override_sender },
+            OverrideDimension {
+                name,
+                default,
+                override_receiver,
+            },
+        )
+    }
+
+    pub fn set(self, dimension: impl Into<Dimension>) {
+        match self.override_sender.send(dimension.into()) {
+            Ok(_) => (),
+            Err(e) => log::debug!("dimension arrived too late: {e:?}"),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct OverrideDimension {
+    name: Name,
+    default: Dimension,
+    override_receiver: oneshot::Receiver<Dimension>,
+}
+
+impl OverrideDimension {
+    /// Consume the dimension. If it hasn't been set by now, you get the default value.
+    pub fn redeem(mut self) -> (Name, Dimension) {
+        (
+            self.name,
+            match self.override_receiver.try_recv() {
+                Ok(option) => match option {
+                    Some(overriden) => overriden,
+                    None => self.default,
+                },
+                Err(_) => self.default,
+            },
+        )
+    }
 }
 
 impl AsRef<Metrics> for Metrics {
@@ -79,58 +129,23 @@ where
 {
     /// Record a dimension name and value pair - last write per metrics object wins!
     #[inline]
-    pub fn dimension(&self, name: impl Into<Name>, value: impl Into<Dimension>) {
-        let mut mutable_dimensions = self.dimensions.lock().expect("Mutex was unable to lock!");
-        mutable_dimensions.insert(name.into(), value.into());
-    }
-
-    /// Record a dimension name and value pair - last write per metrics object wins!
-    /// Prefer this when you have mut on Metrics. It's faster!
-    #[inline]
-    pub fn dimension_mut(&mut self, name: impl Into<Name>, value: impl Into<Dimension>) {
-        let mutable_dimensions = self
-            .dimensions
-            .get_mut()
-            .expect("Mutex was unable to lock!");
-        mutable_dimensions.insert(name.into(), value.into());
+    pub fn dimension(&mut self, name: impl Into<Name>, value: impl Into<Dimension>) {
+        self.dimensions.insert(name.into(), value.into());
     }
 
     /// Record a measurement name and value pair - last write per metrics object wins!
     #[inline]
-    pub fn measurement(&self, name: impl Into<Name>, value: impl Into<Observation>) {
-        let mut mutable_measurements = self.measurements.lock().expect("Mutex was unable to lock!");
-        mutable_measurements.insert(name.into(), Measurement::Observation(value.into()));
-    }
-
-    /// Record a measurement name and value pair - last write per metrics object wins!
-    /// Prefer this when you have mut on Metrics. It's faster!
-    #[inline]
-    pub fn measurement_mut(&mut self, name: impl Into<Name>, value: impl Into<Observation>) {
-        let mutable_measurements = self
-            .measurements
-            .get_mut()
-            .expect("Mutex was unable to lock!");
-        mutable_measurements.insert(name.into(), Measurement::Observation(value.into()));
+    pub fn measurement(&mut self, name: impl Into<Name>, value: impl Into<Observation>) {
+        self.measurements
+            .insert(name.into(), Measurement::Observation(value.into()));
     }
 
     /// Record a distribution name and value pair - last write per metrics object wins!
     /// Check out t-digests if you're using a goodmetrics + timescale downstream.
     #[inline]
-    pub fn distribution(&self, name: impl Into<Name>, value: impl Into<Distribution>) {
-        let mut mutable_measurements = self.measurements.lock().expect("Mutex was unable to lock!");
-        mutable_measurements.insert(name.into(), Measurement::Distribution(value.into()));
-    }
-
-    /// Record a distribution name and value pair - last write per metrics object wins!
-    /// Prefer this when you have mut on Metrics. It's faster!
-    /// Check out t-digests if you're using a goodmetrics + timescale downstream.
-    #[inline]
-    pub fn distribution_mut(&mut self, name: impl Into<Name>, value: impl Into<Distribution>) {
-        let mutable_measurements = self
-            .measurements
-            .get_mut()
-            .expect("Mutex was unable to lock!");
-        mutable_measurements.insert(name.into(), Measurement::Distribution(value.into()));
+    pub fn distribution(&mut self, name: impl Into<Name>, value: impl Into<Distribution>) {
+        self.measurements
+            .insert(name.into(), Measurement::Distribution(value.into()));
     }
 
     /// Record a time distribution in nanoseconds.
@@ -138,8 +153,26 @@ where
     ///
     /// The returned Timer is a scope guard.
     #[inline]
-    pub fn time(&self, timer_name: impl Into<Name>) -> Timer<'_, TBuildHasher> {
-        Timer::new(self, timer_name)
+    pub fn time(&mut self, timer_name: impl Into<Name>) -> Timer {
+        let timer = Arc::new(AtomicUsize::new(0));
+        self.measurements.insert(
+            timer_name.into(),
+            Measurement::Distribution(Distribution::Timer {
+                nanos: timer.clone(),
+            }),
+        );
+        Timer::new(timer)
+    }
+
+    /// A dimension that you set a default for in case you drop early or something.
+    pub fn guarded_dimension(
+        &mut self,
+        name: impl Into<Name>,
+        default: impl Into<Dimension>,
+    ) -> DimensionGuard {
+        let (guard, dimension) = DimensionGuard::new(name.into(), default.into());
+        self.dimension_guards.push(dimension);
+        guard
     }
 
     /// Name of the metrics you passed in when you created it.
@@ -149,17 +182,12 @@ where
     }
 
     /// Clear the structure in preparation for reuse without allocation.
+    /// You still need to set the right behaviors and start times.
     #[inline]
     pub fn restart(&mut self) {
-        self.start_time = Instant::now();
-        self.dimensions
-            .get_mut()
-            .expect("Mutex was unable to lock!")
-            .clear();
-        self.measurements
-            .get_mut()
-            .expect("Mutex was unable to lock!")
-            .clear();
+        self.dimensions.clear();
+        self.measurements.clear();
+        self.dimension_guards.clear();
     }
 
     /// Do not report this metrics instance.
@@ -205,16 +233,18 @@ where
     pub fn new(
         name: impl Into<Name>,
         start_time: Instant,
-        dimensions: BTreeMap<Name, Dimension>,
+        dimensions: HashMap<Name, Dimension, TBuildHasher>,
         measurements: HashMap<Name, Measurement, TBuildHasher>,
+        dimension_guards: Vec<OverrideDimension>,
         behaviors: u32,
     ) -> Self {
         Self {
             metrics_name: name.into(),
             start_time,
-            dimensions: Mutex::new(dimensions),
-            measurements: Mutex::new(measurements),
+            dimensions,
+            measurements,
             behaviors,
+            dimension_guards,
         }
     }
 
@@ -223,65 +253,48 @@ where
     pub fn drain(
         &mut self,
     ) -> (
-        &mut BTreeMap<Name, Dimension>,
+        &mut HashMap<Name, Dimension, TBuildHasher>,
         &mut HashMap<Name, Measurement, TBuildHasher>,
     ) {
-        (
-            self.dimensions
-                .get_mut()
-                .expect("Mutex was unable to lock!"),
-            self.measurements
-                .get_mut()
-                .expect("Mutex was unable to lock!"),
-        )
+        while let Some(d) = self.dimension_guards.pop() {
+            let (name, value) = d.redeem();
+            self.dimension(name, value);
+        }
+        (&mut self.dimensions, &mut self.measurements)
     }
 }
 
 /// Scope guard for recording nanoseconds into a Metrics.
 /// Starts recording when you create it.
 /// Stops recording and puts its measurement into the Metrics as a distribution when you drop it.
-pub struct Timer<'timer, TBuildHasher>
-where
-    TBuildHasher: BuildHasher,
-{
+pub struct Timer {
     start_time: Instant,
-    metrics: &'timer Metrics<TBuildHasher>,
-    name: ManuallyDrop<Name>,
+    timer: Arc<AtomicUsize>,
 }
 
-impl<'timer, TBuildHasher> Drop for Timer<'timer, TBuildHasher>
-where
-    TBuildHasher: BuildHasher,
-{
+impl Drop for Timer {
     fn drop(&mut self) {
-        self.metrics.distribution(
-            unsafe { ManuallyDrop::take(&mut self.name) },
-            self.start_time.elapsed(),
-        )
+        self.timer.store(
+            self.start_time.elapsed().as_nanos() as usize,
+            std::sync::atomic::Ordering::Release,
+        );
     }
 }
 
-impl<'timer, TBuildHasher> Timer<'timer, TBuildHasher>
-where
-    TBuildHasher: BuildHasher,
-{
-    pub fn new(metrics: &'timer Metrics<TBuildHasher>, timer_name: impl Into<Name>) -> Self {
+impl Timer {
+    pub fn new(timer: Arc<AtomicUsize>) -> Self {
         Self {
             start_time: Instant::now(),
-            metrics,
-            name: ManuallyDrop::new(timer_name.into()),
+            timer,
         }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::{
-        collections::{BTreeMap, HashMap},
-        time::Instant,
-    };
+    use std::{collections::HashMap, time::Instant};
 
-    use crate::metrics::{Metrics, Timer};
+    use crate::metrics::Metrics;
 
     fn is_send(_o: impl Send) {}
     fn is_sync(_o: impl Sync) {}
@@ -291,8 +304,9 @@ mod test {
         let metrics = Metrics::new(
             "name",
             Instant::now(),
-            BTreeMap::from([]),
             HashMap::from([]),
+            HashMap::from([]),
+            Vec::new(),
             0,
         );
         is_send(metrics);
@@ -300,8 +314,9 @@ mod test {
         let metrics = Metrics::new(
             "name",
             Instant::now(),
-            BTreeMap::from([]),
             HashMap::from([]),
+            HashMap::from([]),
+            Vec::new(),
             0,
         );
         is_sync(metrics);
@@ -309,16 +324,17 @@ mod test {
 
     #[test_log::test]
     fn test_timer() {
-        let metrics = Metrics::new(
+        let mut metrics = Metrics::new(
             "name",
             Instant::now(),
-            BTreeMap::from([]),
             HashMap::from([]),
+            HashMap::from([]),
+            Vec::new(),
             0,
         );
-        let timer_1 = Timer::new(&metrics, "t1");
+        let timer_1 = metrics.time("t1");
         is_send(timer_1);
-        let timer_1 = Timer::new(&metrics, "t1");
+        let timer_1 = metrics.time("t1");
         is_sync(timer_1);
     }
 }
