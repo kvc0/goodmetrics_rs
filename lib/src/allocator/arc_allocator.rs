@@ -102,7 +102,7 @@ where
     }
 }
 
-pub struct CachedMetrics<TBuildHasher>
+pub struct CachedMetrics<TBuildHasher = RandomState>
 where
     TBuildHasher: BuildHasher + Default + Send + 'static,
 {
