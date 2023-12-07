@@ -6,7 +6,7 @@ use std::{
     cmp::max,
     collections::HashMap,
     hash::BuildHasher,
-    mem::ManuallyDrop,
+    mem::take,
     ops::{Deref, DerefMut},
     sync::{atomic::AtomicUsize, Arc, Mutex},
     time::Instant,
@@ -79,7 +79,7 @@ where
         };
         CachedMetrics {
             allocator: self.state.clone(),
-            metrics: ManuallyDrop::new(metrics),
+            metrics: Some(metrics),
         }
     }
 }
@@ -107,7 +107,7 @@ where
     TBuildHasher: BuildHasher + Default + Send + 'static,
 {
     allocator: Arc<AllocatorState<TBuildHasher>>,
-    metrics: ManuallyDrop<Metrics<TBuildHasher>>,
+    metrics: Option<Metrics<TBuildHasher>>,
 }
 
 impl<TBuildHasher> Drop for CachedMetrics<TBuildHasher>
@@ -116,7 +116,8 @@ where
 {
     fn drop(&mut self) {
         // SAFETY: The referent is extracted on this line and the manuallydropped is dropped without further use
-        let metrics: Metrics<TBuildHasher> = unsafe { ManuallyDrop::take(&mut self.metrics) };
+        let metrics: Metrics<TBuildHasher> =
+            take(&mut self.metrics).expect("drop happens only once");
         self.allocator.return_instance(metrics);
     }
 }
@@ -126,14 +127,14 @@ impl<TBuildHasher: BuildHasher + Default + Send> Deref for CachedMetrics<TBuildH
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        &self.metrics
+        self.metrics.as_ref().expect("cannot access after drop")
     }
 }
 
 impl<TBuildHasher: BuildHasher + Default + Send> DerefMut for CachedMetrics<TBuildHasher> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.metrics
+        self.metrics.as_mut().expect("cannot access after drop")
     }
 }
 
@@ -141,7 +142,7 @@ impl<TBuildHasher: BuildHasher + Default + Send> AsMut<Metrics<TBuildHasher>>
     for CachedMetrics<TBuildHasher>
 {
     fn as_mut(&mut self) -> &mut Metrics<TBuildHasher> {
-        &mut self.metrics
+        self.metrics.as_mut().expect("cannot access after drop")
     }
 }
 
@@ -149,6 +150,6 @@ impl<TBuildHasher: BuildHasher + Default + Send> AsRef<Metrics<TBuildHasher>>
     for CachedMetrics<TBuildHasher>
 {
     fn as_ref(&self) -> &Metrics<TBuildHasher> {
-        &self.metrics
+        self.metrics.as_ref().expect("cannot access after drop")
     }
 }
