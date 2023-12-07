@@ -4,7 +4,7 @@ use crate::{
 };
 use std::{
     cmp::max,
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     hash::BuildHasher,
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
@@ -71,8 +71,9 @@ where
             None => Metrics::new(
                 metrics_name,
                 Instant::now(),
-                BTreeMap::new(),
                 HashMap::with_hasher(Default::default()),
+                HashMap::with_hasher(Default::default()),
+                Vec::new(),
                 MetricsBehavior::Default as u32,
             ),
         };

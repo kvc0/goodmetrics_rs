@@ -163,7 +163,7 @@ where
 
     // You should consider using record_scope() instead.
     #[inline]
-    fn emit(&self, metrics: TMetricsRef) {
+    fn emit(&self, mut metrics: TMetricsRef) {
         if metrics.as_ref().has_behavior(MetricsBehavior::Suppress) {
             return;
         }
@@ -172,7 +172,7 @@ where
             .has_behavior(MetricsBehavior::SuppressTotalTime)
         {
             let elapsed = metrics.as_ref().start_time.elapsed();
-            metrics.as_ref().distribution("totaltime", elapsed);
+            metrics.as_mut().distribution("totaltime", elapsed);
         }
 
         self.sink.accept(metrics)
@@ -340,7 +340,7 @@ mod test {
     fn logging_metrics_factory() {
         let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, LoggingSink> =
             MetricsFactory::new(LoggingSink::default());
-        let metrics = metrics_factory.record_scope("test");
+        let mut metrics = metrics_factory.record_scope("test");
         // Dimension the scoped metrics
         metrics.dimension("some dimension", "a dim");
 
@@ -364,7 +364,7 @@ mod test {
             &[MetricsBehavior::Default],
             AlwaysNewMetricsAllocator::default(),
         );
-        let metrics = metrics_factory.record_scope("test");
+        let mut metrics = metrics_factory.record_scope("test");
         // Dimension the scoped metrics
         metrics.dimension("some dimension", "a dim");
 
@@ -384,7 +384,7 @@ mod test {
         #[allow(clippy::redundant_clone)]
         let cloned = metrics_factory.clone();
         {
-            let metrics = metrics_factory.record_scope("test");
+            let mut metrics = metrics_factory.record_scope("test");
             metrics.dimension("some dimension", "a dim");
         }
 
@@ -404,7 +404,7 @@ mod test {
         #[allow(clippy::redundant_clone)]
         let cloned = metrics_factory.clone();
         {
-            let metrics = metrics_factory.record_scope("test");
+            let mut metrics = metrics_factory.record_scope("test");
             metrics.dimension("some dimension", "a dim");
         }
 

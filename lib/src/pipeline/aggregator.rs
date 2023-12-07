@@ -71,6 +71,7 @@ pub struct Aggregator<TMetricsRef> {
     map: AggregatedMetricsMap,
     distribution_mode: DistributionMode,
     time_source: TimeSource,
+    cached_position: DimensionPosition,
 }
 
 impl<TMetricsRef> Aggregator<TMetricsRef>
@@ -86,6 +87,7 @@ where
             map: Default::default(),
             distribution_mode,
             time_source: Default::default(),
+            cached_position: Default::default(),
         }
     }
 
@@ -99,6 +101,7 @@ where
             map: Default::default(),
             distribution_mode,
             time_source,
+            cached_position: Default::default(),
         }
     }
 
@@ -209,16 +212,18 @@ where
                 }
             };
 
+        self.cached_position.extend(dimensions.drain()); // Use the cached memory
         let measurements_map: &mut MeasurementAggregationMap =
-            match dimensioned_measurements_map.get_mut(dimensions) {
+            match dimensioned_measurements_map.get_mut(&self.cached_position) {
                 Some(map) => map,
                 None => {
-                    dimensioned_measurements_map.insert(dimensions.clone(), Default::default());
+                    dimensioned_measurements_map.insert(self.cached_position.clone(), Default::default());
                     dimensioned_measurements_map
-                        .get_mut(dimensions)
+                        .get_mut(&self.cached_position)
                         .expect("I just inserted this 1 line above")
                 }
             };
+        self.cached_position.clear(); // Return the cached memory
 
         measurements
             .drain()
@@ -418,7 +423,7 @@ mod test {
         measurement_name: impl Into<Name>,
         measurement: impl Into<Observation>,
     ) -> Metrics {
-        let metrics = AlwaysNewMetricsAllocator::default().new_metrics("test");
+        let mut metrics = AlwaysNewMetricsAllocator::default().new_metrics("test");
         metrics.dimension(dimension_name, dimension);
         metrics.measurement(measurement_name, measurement);
         metrics

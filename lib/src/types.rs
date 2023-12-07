@@ -1,4 +1,4 @@
-use std::{fmt::Display, sync::Arc, time::Duration};
+use std::{fmt::Display, sync::{Arc, atomic::AtomicUsize}, time::Duration};
 
 /// The value part of a dimension's key/value pair.
 #[derive(Debug, Eq, Hash, PartialEq, Clone)]
@@ -103,6 +103,16 @@ pub enum Distribution {
     // Also, this unconditionally uses the global allocator.
     // PR to plumb the allocator type out would be welcome.
     Collection(Vec<i64>),
+    // A helper for recording a distribution of time. This is
+    // shared by a Timer with a Drop implementation and the
+    // Metrics object for it. I don't enforce that the timer
+    // is dropped before the metrics, because tokio::spawn
+    // requires that the closure is owned for 'static. So
+    // extremely rigorous correctness takes a backseat to
+    // usability here.
+    Timer {
+        nanos: Arc<AtomicUsize>,
+    }
 }
 
 impl From<&Observation> for f64 {

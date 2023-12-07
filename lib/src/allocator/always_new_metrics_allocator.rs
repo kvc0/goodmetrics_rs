@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::RandomState, BTreeMap, HashMap},
+    collections::{hash_map::RandomState, HashMap},
     hash::BuildHasher,
     marker::PhantomData,
     time::Instant,
@@ -46,8 +46,9 @@ where
         Metrics::new(
             metrics_name,
             Instant::now(),
-            BTreeMap::new(),
             HashMap::with_hasher(Default::default()),
+            HashMap::with_hasher(Default::default()),
+            Vec::new(),
             MetricsBehavior::Default as u32,
         )
     }
