@@ -55,13 +55,14 @@ pub struct DimensionGuard {
 impl DimensionGuard {
     fn new(name: Name, default: Dimension) -> (Self, OverrideDimension) {
         let (override_sender, override_receiver) = oneshot::channel();
-        (Self {
-            override_sender,
-        }, OverrideDimension {
-            name,
-            default,
-            override_receiver,
-        })
+        (
+            Self { override_sender },
+            OverrideDimension {
+                name,
+                default,
+                override_receiver,
+            },
+        )
     }
 
     pub fn set(self, dimension: impl Into<Dimension>) {
@@ -90,7 +91,7 @@ impl OverrideDimension {
                     None => self.default,
                 },
                 Err(_) => self.default,
-            }
+            },
         )
     }
 }
@@ -135,14 +136,16 @@ where
     /// Record a measurement name and value pair - last write per metrics object wins!
     #[inline]
     pub fn measurement(&mut self, name: impl Into<Name>, value: impl Into<Observation>) {
-        self.measurements.insert(name.into(), Measurement::Observation(value.into()));
+        self.measurements
+            .insert(name.into(), Measurement::Observation(value.into()));
     }
 
     /// Record a distribution name and value pair - last write per metrics object wins!
     /// Check out t-digests if you're using a goodmetrics + timescale downstream.
     #[inline]
     pub fn distribution(&mut self, name: impl Into<Name>, value: impl Into<Distribution>) {
-        self.measurements.insert(name.into(), Measurement::Distribution(value.into()));
+        self.measurements
+            .insert(name.into(), Measurement::Distribution(value.into()));
     }
 
     /// Record a time distribution in nanoseconds.
@@ -152,12 +155,21 @@ where
     #[inline]
     pub fn time(&mut self, timer_name: impl Into<Name>) -> Timer {
         let timer = Arc::new(AtomicUsize::new(0));
-        self.measurements.insert(timer_name.into(), Measurement::Distribution(Distribution::Timer { nanos: timer.clone() }));
+        self.measurements.insert(
+            timer_name.into(),
+            Measurement::Distribution(Distribution::Timer {
+                nanos: timer.clone(),
+            }),
+        );
         Timer::new(timer)
     }
 
     /// A dimension that you set a default for in case you drop early or something.
-    pub fn guarded_dimension(&mut self, name: impl Into<Name>, default: impl Into<Dimension>) -> DimensionGuard {
+    pub fn guarded_dimension(
+        &mut self,
+        name: impl Into<Name>,
+        default: impl Into<Dimension>,
+    ) -> DimensionGuard {
         let (guard, dimension) = DimensionGuard::new(name.into(), default.into());
         self.dimension_guards.push(dimension);
         guard
@@ -248,31 +260,28 @@ where
             let (name, value) = d.redeem();
             self.dimension(name, value);
         }
-        (
-            &mut self.dimensions,
-            &mut self.measurements,
-        )
+        (&mut self.dimensions, &mut self.measurements)
     }
 }
 
 /// Scope guard for recording nanoseconds into a Metrics.
 /// Starts recording when you create it.
 /// Stops recording and puts its measurement into the Metrics as a distribution when you drop it.
-pub struct Timer
-{
+pub struct Timer {
     start_time: Instant,
     timer: Arc<AtomicUsize>,
 }
 
-impl Drop for Timer
-{
+impl Drop for Timer {
     fn drop(&mut self) {
-        self.timer.store(self.start_time.elapsed().as_nanos() as usize, std::sync::atomic::Ordering::Release);
+        self.timer.store(
+            self.start_time.elapsed().as_nanos() as usize,
+            std::sync::atomic::Ordering::Release,
+        );
     }
 }
 
-impl Timer
-{
+impl Timer {
     pub fn new(timer: Arc<AtomicUsize>) -> Self {
         Self {
             start_time: Instant::now(),
@@ -283,10 +292,7 @@ impl Timer
 
 #[cfg(test)]
 mod test {
-    use std::{
-        collections::HashMap,
-        time::Instant,
-    };
+    use std::{collections::HashMap, time::Instant};
 
     use crate::metrics::Metrics;
 

@@ -1,4 +1,8 @@
-use std::{fmt::Display, sync::{Arc, atomic::AtomicUsize}, time::Duration};
+use std::{
+    fmt::Display,
+    sync::{atomic::AtomicUsize, Arc},
+    time::Duration,
+};
 
 /// The value part of a dimension's key/value pair.
 #[derive(Debug, Eq, Hash, PartialEq, Clone)]
@@ -110,9 +114,7 @@ pub enum Distribution {
     // requires that the closure is owned for 'static. So
     // extremely rigorous correctness takes a backseat to
     // usability here.
-    Timer {
-        nanos: Arc<AtomicUsize>,
-    }
+    Timer { nanos: Arc<AtomicUsize> },
 }
 
 impl From<&Observation> for f64 {

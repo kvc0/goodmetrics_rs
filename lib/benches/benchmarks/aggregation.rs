@@ -48,7 +48,7 @@ pub fn aggregation(criterion: &mut Criterion) {
                     for _ in 0..thread_count {
                         scope.spawn(|| {
                             for i in 0..iterations_per_thread {
-                                let metrics = metrics_factory.record_scope("demo");
+                                let mut metrics = metrics_factory.record_scope("demo");
                                 let _scope = metrics.time("timed_delay");
                                 metrics.measurement("ran", 1);
                                 metrics.dimension("mod", i % 8);

@@ -71,7 +71,7 @@ impl AbsorbDistribution for HashMap<i64, u64> {
                 self.entry(bucket_10_2_sigfigs(v as i64))
                     .and_modify(|count| *count += 1)
                     .or_insert(1);
-            },
+            }
         };
     }
 }

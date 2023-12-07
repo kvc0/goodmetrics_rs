@@ -217,7 +217,8 @@ where
             match dimensioned_measurements_map.get_mut(&self.cached_position) {
                 Some(map) => map,
                 None => {
-                    dimensioned_measurements_map.insert(self.cached_position.clone(), Default::default());
+                    dimensioned_measurements_map
+                        .insert(self.cached_position.clone(), Default::default());
                     dimensioned_measurements_map
                         .get_mut(&self.cached_position)
                         .expect("I just inserted this 1 line above")

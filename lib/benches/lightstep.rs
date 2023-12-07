@@ -96,7 +96,7 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
         bencher.iter(|| {
             i += 1;
 
-            let metrics = metrics_factory.record_scope("demo");
+            let mut metrics = metrics_factory.record_scope("demo");
             let _scope = metrics.time("timed_delay");
             metrics.measurement("ran", 1);
             metrics.dimension("mod", i % 8);
