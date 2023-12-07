@@ -4,7 +4,7 @@ use crate::{
 };
 use std::{
     cmp::max,
-    collections::HashMap,
+    collections::{hash_map::RandomState, HashMap},
     hash::BuildHasher,
     mem::take,
     ops::{Deref, DerefMut},
@@ -18,7 +18,7 @@ use super::MetricsAllocator;
 /// Borrow Checker constraint. References are owned, so it's easier to pass them
 /// around.
 #[derive(Clone)]
-pub struct ArcAllocator<TBuildHasher: Send> {
+pub struct ArcAllocator<TBuildHasher: Send = RandomState> {
     state: Arc<AllocatorState<TBuildHasher>>,
 }
 
