@@ -1,4 +1,10 @@
+#[cfg(not(feature = "ahash-hasher"))]
 use std::collections::hash_map::RandomState;
+
+#[cfg(feature = "ahash-hasher")]
+use ahash::RandomState;
+
+pub type Hasher = RandomState;
 
 use crate::{metrics::Metrics, types::Name};
 

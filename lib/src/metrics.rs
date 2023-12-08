@@ -1,5 +1,5 @@
 use std::{
-    collections::{self, HashMap},
+    collections::HashMap,
     fmt::Display,
     hash::BuildHasher,
     sync::{atomic::AtomicUsize, Arc},
@@ -8,7 +8,10 @@ use std::{
 
 use futures::channel::oneshot;
 
-use crate::types::{Dimension, Distribution, Measurement, Name, Observation};
+use crate::{
+    allocator::Hasher,
+    types::{Dimension, Distribution, Measurement, Name, Observation},
+};
 
 #[derive(Clone, Copy, Debug)]
 pub enum MetricsBehavior {
@@ -39,7 +42,7 @@ pub enum MetricsBehavior {
 /// Generally prefer to record dimensions as early as possible, in case you
 /// early-out somewhere; in this way you'll have more information in those cases.
 #[derive(Debug)]
-pub struct Metrics<TBuildHasher = collections::hash_map::RandomState> {
+pub struct Metrics<TBuildHasher = Hasher> {
     pub(crate) metrics_name: Name,
     pub(crate) start_time: Instant,
     dimensions: HashMap<Name, Dimension, TBuildHasher>,
@@ -96,14 +99,14 @@ impl OverrideDimension {
     }
 }
 
-impl AsRef<Metrics> for Metrics {
-    fn as_ref(&self) -> &Metrics {
+impl<H> AsRef<Metrics<H>> for Metrics<H> {
+    fn as_ref(&self) -> &Metrics<H> {
         self
     }
 }
 
-impl AsMut<Metrics> for Metrics {
-    fn as_mut(&mut self) -> &mut Metrics {
+impl<H> AsMut<Metrics<H>> for Metrics<H> {
+    fn as_mut(&mut self) -> &mut Metrics<H> {
         self
     }
 }

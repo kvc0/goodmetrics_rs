@@ -4,7 +4,7 @@ use crate::{
 };
 use std::{
     cmp::max,
-    collections::{hash_map::RandomState, HashMap},
+    collections::HashMap,
     hash::BuildHasher,
     mem::take,
     ops::{Deref, DerefMut},
@@ -12,13 +12,13 @@ use std::{
     time::Instant,
 };
 
-use super::MetricsAllocator;
+use super::{Hasher, MetricsAllocator};
 
 /// A metrics allocator that prioritizes reusing Metrics objects, but with a gentler
 /// Borrow Checker constraint. References are owned, so it's easier to pass them
 /// around.
 #[derive(Clone)]
-pub struct ArcAllocator<TBuildHasher: Send = RandomState> {
+pub struct ArcAllocator<TBuildHasher: Send = Hasher> {
     state: Arc<AllocatorState<TBuildHasher>>,
 }
 
@@ -109,7 +109,7 @@ where
     }
 }
 
-pub struct CachedMetrics<TBuildHasher = RandomState>
+pub struct CachedMetrics<TBuildHasher = Hasher>
 where
     TBuildHasher: BuildHasher + Default + Send + 'static,
 {
