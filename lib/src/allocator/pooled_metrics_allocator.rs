@@ -1,8 +1,4 @@
-use std::{
-    collections::{hash_map::RandomState, HashMap},
-    hash::BuildHasher,
-    time::Instant,
-};
+use std::{collections::HashMap, hash::BuildHasher, time::Instant};
 
 use object_pool::{Pool, Reusable};
 
@@ -11,9 +7,9 @@ use crate::{
     types::Name,
 };
 
-use super::MetricsAllocator;
+use super::{Hasher, MetricsAllocator};
 
-pub struct PooledMetricsAllocator<TBuildHasher = RandomState> {
+pub struct PooledMetricsAllocator<TBuildHasher = Hasher> {
     pool: Pool<Metrics<TBuildHasher>>,
     size: usize,
 }
@@ -44,7 +40,7 @@ impl<T: BuildHasher + Default> PooledMetricsAllocator<T> {
     }
 }
 
-impl Default for PooledMetricsAllocator<RandomState> {
+impl<H: BuildHasher + Default> Default for PooledMetricsAllocator<H> {
     fn default() -> Self {
         Self::new(128)
     }

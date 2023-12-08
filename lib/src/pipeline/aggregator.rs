@@ -1,10 +1,11 @@
 use std::{
+    cmp::min,
     collections::{BTreeMap, HashMap},
     mem::replace,
     time::{Duration, Instant, SystemTime},
 };
 
-use tokio::{select, sync::mpsc};
+use tokio::sync::mpsc;
 
 use crate::{
     allocator::MetricsRef,
@@ -67,11 +68,14 @@ impl Default for TimeSource {
 }
 
 pub struct Aggregator<TMetricsRef> {
-    metrics_queue: mpsc::Receiver<TMetricsRef>,
+    metrics_queue: std::sync::mpsc::Receiver<TMetricsRef>,
     map: AggregatedMetricsMap,
     distribution_mode: DistributionMode,
     time_source: TimeSource,
     cached_position: DimensionPosition,
+    /// A workaround for the tokio::sync::mpsc::Sender charging way too much time
+    /// on send for waking the receiver task across runtimes.
+    poll_interval: Duration,
 }
 
 impl<TMetricsRef> Aggregator<TMetricsRef>
@@ -79,7 +83,7 @@ where
     TMetricsRef: MetricsRef + Send + 'static,
 {
     pub fn new(
-        metrics_queue: mpsc::Receiver<TMetricsRef>,
+        metrics_queue: std::sync::mpsc::Receiver<TMetricsRef>,
         distribution_mode: DistributionMode,
     ) -> Self {
         Self {
@@ -88,11 +92,12 @@ where
             distribution_mode,
             time_source: Default::default(),
             cached_position: Default::default(),
+            poll_interval: Duration::from_millis(5),
         }
     }
 
     pub fn new_with_time_source(
-        metrics_queue: mpsc::Receiver<TMetricsRef>,
+        metrics_queue: std::sync::mpsc::Receiver<TMetricsRef>,
         distribution_mode: DistributionMode,
         time_source: TimeSource,
     ) -> Self {
@@ -102,6 +107,7 @@ where
             distribution_mode,
             time_source,
             cached_position: Default::default(),
+            poll_interval: Duration::from_millis(5),
         }
     }
 
@@ -157,18 +163,21 @@ where
         }
     }
 
-    async fn receive_one(&mut self, wait_for: Duration) -> bool {
-        select! {
-            next = self.metrics_queue.recv() => {
-                if let Some(more) = next {
+    async fn receive_one(&mut self, mut wait_for: Duration) -> bool {
+        loop {
+            match self.metrics_queue.try_recv() {
+                Ok(more) => {
                     self.aggregate_metrics(more);
-                    true
-                } else {
-                    false
+                    break true;
                 }
-            }
-            _ = tokio::time::sleep(wait_for) => {
-                false
+                Err(_) => {
+                    let delay = min(wait_for, self.poll_interval);
+                    if delay.is_zero() {
+                        break false;
+                    }
+                    tokio::time::sleep(delay).await;
+                    wait_for -= delay;
+                }
             }
         }
     }
@@ -316,10 +325,9 @@ fn accumulate_statisticset(
 mod test {
     use std::{
         collections::{BTreeMap, HashMap},
+        sync::mpsc::sync_channel,
         time::{Duration, SystemTime},
     };
-
-    use tokio::sync::mpsc::channel;
 
     use crate::{
         allocator::{always_new_metrics_allocator::AlwaysNewMetricsAllocator, MetricsAllocator},
@@ -332,7 +340,7 @@ mod test {
 
     #[test_log::test(tokio::test())]
     async fn test_aggregation() {
-        let (sender, receiver) = channel(16);
+        let (sender, receiver) = sync_channel(16);
         let mut sink: Aggregator<Metrics> = Aggregator::new(receiver, DistributionMode::Histogram);
 
         sender
@@ -372,7 +380,7 @@ mod test {
 
     #[test_log::test(tokio::test)]
     async fn test_draining() {
-        let (sender, receiver) = channel(16);
+        let (sender, receiver) = sync_channel(16);
         let mut sink: Aggregator<Metrics> = Aggregator::new(receiver, DistributionMode::Histogram);
 
         sender
@@ -424,7 +432,7 @@ mod test {
         measurement_name: impl Into<Name>,
         measurement: impl Into<Observation>,
     ) -> Metrics {
-        let mut metrics = AlwaysNewMetricsAllocator::default().new_metrics("test");
+        let mut metrics = AlwaysNewMetricsAllocator.new_metrics("test");
         metrics.dimension(dimension_name, dimension);
         metrics.measurement(measurement_name, measurement);
         metrics

@@ -362,7 +362,7 @@ mod test {
         > = MetricsFactory::new_with_allocator(
             SerializingSink::new(LoggingSink::default()),
             &[MetricsBehavior::Default],
-            AlwaysNewMetricsAllocator::default(),
+            AlwaysNewMetricsAllocator,
         );
         let mut metrics = metrics_factory.record_scope("test");
         // Dimension the scoped metrics
@@ -379,7 +379,7 @@ mod test {
             MetricsFactory::new_with_allocator(
                 stream_sink,
                 &[MetricsBehavior::Default],
-                AlwaysNewMetricsAllocator::default(),
+                AlwaysNewMetricsAllocator,
             );
         #[allow(clippy::redundant_clone)]
         let cloned = metrics_factory.clone();
