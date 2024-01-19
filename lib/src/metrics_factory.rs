@@ -460,7 +460,7 @@ mod test {
             batch_fn,
         ));
 
-        let result = receiver.recv().await.unwrap();
+        let result = receiver.recv().await.expect("should have received metrics");
         assert_eq!(
             HashSet::from([
                 &Name::from("test_gauges"),
@@ -482,20 +482,14 @@ mod test {
                     })
                 )])
             )]),
-            result.get(&Name::from("test_gauges")).unwrap()
+            result
+                .get(&Name::from("test_gauges"))
+                .expect("should have found data for gauge group `test_gauges`")
         );
 
-        let dimensioned_gauges_result = result.get(&Name::from("test_dimensioned_gauges")).unwrap();
-
-        assert_eq!(
-            HashSet::from([&BTreeMap::from([
-                (Name::from("test"), Dimension::from("dimension")),
-                (Name::from("other"), Dimension::from(1_u32)),
-            ])]),
-            dimensioned_gauges_result
-                .keys()
-                .collect::<HashSet<&BTreeMap<Name, Dimension>>>()
-        );
+        let dimensioned_gauges_result = result
+            .get(&Name::from("test_dimensioned_gauges"))
+            .expect("should have found data for gauge group `test_dimensioned_gauges`");
 
         assert_eq!(
             &HashMap::from([(
@@ -524,7 +518,7 @@ mod test {
                     ),
                 ])
             ),]),
-            result.get(&Name::from("test_dimensioned_gauges")).unwrap()
+            dimensioned_gauges_result
         );
     }
 }
