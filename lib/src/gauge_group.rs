@@ -7,7 +7,7 @@ use crate::pipeline::aggregation::Aggregation;
 use crate::pipeline::aggregator::DimensionedMeasurementsMap;
 use crate::{
     gauge::{self, StatisticSetGauge},
-    pipeline::{aggregator::DimensionPosition},
+    pipeline::aggregator::DimensionPosition,
     types::Name,
 };
 
@@ -47,6 +47,7 @@ impl GaugeGroup {
         }
     }
 
+    // reset gauge group, aggregating and returning previous values
     pub fn reset(&mut self) -> DimensionedMeasurementsMap {
         self.dimensioned_gauges
             .retain(|_dimension_position, gauges| {

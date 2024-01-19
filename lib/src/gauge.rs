@@ -1,9 +1,12 @@
+use std::collections::BTreeMap;
 use std::{
     sync::atomic::{AtomicI64, AtomicU64},
     time::Instant,
 };
 
 use crate::pipeline::aggregation::statistic_set::StatisticSet;
+use crate::pipeline::aggregator::DimensionPosition;
+use crate::types::{Dimension, Name};
 
 /// A gauge is a compromise for high throughput metrics. Sometimes you can't afford to
 /// allocate a Metrics object to record something, and you can let go of some detail
@@ -71,5 +74,68 @@ impl StatisticSetGauge {
             sum: self.sum.fetch_sub(sum, ORDERING),
             count: self.count.fetch_sub(count, ORDERING),
         })
+    }
+}
+
+/// A GaugeDimensions is a group of dimensions to be used with a gauge.
+/// It is consumed when the gauge is created.
+#[derive(Debug, Default)]
+pub struct GaugeDimensions {
+    pub dimension_position: DimensionPosition,
+}
+
+impl GaugeDimensions {
+    /// Create a new, empty, GaugeDimensions
+    pub fn new() -> Self {
+        Self {
+            dimension_position: Default::default(),
+        }
+    }
+
+    /// Create a new GaugeDimensions from a given name and dimension
+    ///
+    /// ```
+    /// use goodmetrics::gauge::GaugeDimensions;
+    ///
+    /// GaugeDimensions::from("a", "dimension");
+    /// ```
+    pub fn from(name: impl Into<Name>, dimension: impl Into<Dimension>) -> Self {
+        Self {
+            dimension_position: BTreeMap::from([(name.into(), dimension.into())]),
+        }
+    }
+
+    /// Add a name/dimension to the GaugeDimensions.
+    /// Can be chained for successive inserts.
+    ///
+    /// ```
+    /// use goodmetrics::gauge::GaugeDimensions;
+    ///
+    /// let mut dimensions = GaugeDimensions::new();
+    /// dimensions.insert("a", "dimension");
+    /// dimensions.insert("another", "dimension");
+    /// ```
+    pub fn insert(&mut self, name: impl Into<Name>, dimension: impl Into<Dimension>) -> &mut Self {
+        self.dimension_position
+            .insert(name.into(), dimension.into());
+        self
+    }
+
+    /// Add a name/dimension to the GaugeDimensions, taking and returning ownership of self.
+    /// For chaining in value positions without an intermediate `let`
+    ///
+    /// ```
+    /// use goodmetrics::gauge::GaugeDimensions;
+    ///
+    /// GaugeDimensions::from("a", "dimension").with_dimension("another", "dimension");
+    /// ```
+    pub fn with_dimension(
+        mut self,
+        name: impl Into<Name>,
+        dimension: impl Into<Dimension>,
+    ) -> Self {
+        self.dimension_position
+            .insert(name.into(), dimension.into());
+        self
     }
 }
