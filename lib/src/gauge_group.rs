@@ -3,15 +3,18 @@ use std::{
     sync::{Arc, Weak},
 };
 
+use crate::pipeline::aggregation::Aggregation;
+use crate::pipeline::aggregator::DimensionedMeasurementsMap;
 use crate::{
     gauge::{self, StatisticSetGauge},
-    pipeline::{aggregation::statistic_set::StatisticSet, aggregator::DimensionPosition},
+    pipeline::{aggregator::DimensionPosition},
     types::Name,
 };
 
 #[derive(Default)]
 pub struct GaugeGroup {
-    gauges: HashMap<DimensionPosition, HashMap<Name, Weak<StatisticSetGauge>>>,
+    pub(crate) dimensioned_gauges:
+        HashMap<DimensionPosition, HashMap<Name, Weak<StatisticSetGauge>>>,
 }
 
 impl GaugeGroup {
@@ -20,9 +23,13 @@ impl GaugeGroup {
         self.dimensioned_gauge(name, Default::default())
     }
 
-    pub fn dimensioned_gauge(&mut self, name: impl Into<Name>, dimensions: DimensionPosition) -> Arc<StatisticSetGauge> {
+    pub fn dimensioned_gauge(
+        &mut self,
+        name: impl Into<Name>,
+        dimensions: DimensionPosition,
+    ) -> Arc<StatisticSetGauge> {
         let name = name.into();
-        let mut gauge_position = self.gauges.entry(dimensions).or_default();
+        let gauge_position = self.dimensioned_gauges.entry(dimensions).or_default();
         match gauge_position.get(&name) {
             Some(existing) => match existing.upgrade() {
                 Some(existing) => existing,
@@ -40,25 +47,31 @@ impl GaugeGroup {
         }
     }
 
-    pub fn reset(&mut self) -> (impl Iterator<Item = DimensionedAggregatedGauges<StatisticSet>> + '_) {
-        self.gauges.retain(|_name, gauge| gauge.upgrade().is_some());
+    pub fn reset(&mut self) -> DimensionedMeasurementsMap {
+        self.dimensioned_gauges
+            .retain(|_dimension_position, gauges| {
+                gauges.retain(|_name, gauge| gauge.upgrade().is_some());
+                !gauges.is_empty()
+            });
 
-        self.gauges.iter().filter_map(|(name, possible_gauge)| {
-            possible_gauge
-                .upgrade()
-                .and_then(|gauge| gauge.reset())
-                .map(|statistic_set| (name.to_owned(), statistic_set))
-        });
-        vec![].into_iter()
+        self.dimensioned_gauges
+            .iter()
+            .map(|(dimension_position, gauges)| {
+                (
+                    dimension_position.to_owned(),
+                    gauges
+                        .iter()
+                        .filter_map(|(name, possible_gauge)| {
+                            possible_gauge
+                                .upgrade()
+                                .and_then(|gauge| gauge.reset())
+                                .map(|statistic_set| {
+                                    (name.to_owned(), Aggregation::StatisticSet(statistic_set))
+                                })
+                        })
+                        .collect(),
+                )
+            })
+            .collect()
     }
-}
-
-pub struct DimensionedAggregatedGauges<MeasurementType> {
-    position: DimensionPosition,
-    gauges: Vec<AggregatedGauge<MeasurementType>>,
-}
-
-pub struct AggregatedGauge<MeasurementType> {
-    pub name: Name,
-    measurement: MeasurementType,
 }

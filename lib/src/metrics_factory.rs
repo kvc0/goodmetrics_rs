@@ -1,11 +1,13 @@
 use std::{
     collections::HashMap,
+    iter,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
 
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
+use crate::types::Dimension;
 use crate::{
     allocator::{
         returning_reference::{ReturnTarget, ReturningRef},
@@ -14,11 +16,7 @@ use crate::{
     gauge::StatisticSetGauge,
     gauge_group::GaugeGroup,
     metrics::MetricsBehavior,
-    pipeline::{
-        aggregation::Aggregation,
-        aggregator::{AggregatedMetricsMap, DimensionPosition, DimensionedMeasurementsMap},
-        Sink,
-    },
+    pipeline::{aggregator::AggregatedMetricsMap, Sink},
     types::Name,
 };
 
@@ -208,16 +206,30 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
         gauge_group: impl Into<Name>,
         gauge_name: impl Into<Name>,
     ) -> Arc<StatisticSetGauge> {
+        self.dimensioned_gauge(gauge_group, gauge_name, iter::empty::<(String, String)>())
+    }
+
+    /// Get a gauge within a group, of a particular name, with specified dimensions.
+    pub fn dimensioned_gauge(
+        &self,
+        gauge_group: impl Into<Name>,
+        gauge_name: impl Into<Name>,
+        dimensions: impl IntoIterator<Item = (impl Into<Name>, impl Into<Dimension>)>,
+    ) -> Arc<StatisticSetGauge> {
         let mut locked_groups = self
             .gauge_groups
             .lock()
             .expect("local mutex should not be poisoned");
         let gauge_group = gauge_group.into();
+        let dimension_position = dimensions
+            .into_iter()
+            .map(|(name, position)| (name.into(), position.into()))
+            .collect();
         match locked_groups.get_mut(&gauge_group) {
-            Some(group) => group.gauge(gauge_name),
+            Some(group) => group.dimensioned_gauge(gauge_name, dimension_position),
             None => {
                 let mut group = GaugeGroup::default();
-                let gauge = group.gauge(gauge_name);
+                let gauge = group.dimensioned_gauge(gauge_name, dimension_position);
                 locked_groups.insert(gauge_group, group);
                 gauge
             }
@@ -245,21 +257,9 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
                 .lock()
                 .expect("local mutex should not be poisoned")
                 .iter_mut()
-                .map(|(group_name, gauge_group)| {
-                    (
-                        group_name.to_owned(),
-                        DimensionedMeasurementsMap::from_iter(vec![(
-                            DimensionPosition::new(),
-                            gauge_group
-                                .reset()
-                                .map(|(name, statistic_set)| {
-                                    (name, Aggregation::StatisticSet(statistic_set))
-                                })
-                                .collect(),
-                        )]),
-                    )
-                })
+                .map(|(group_name, gauge_group)| (group_name.to_owned(), gauge_group.reset()))
                 .collect();
+
             match sender.try_send(make_batch(now, period, &mut gauges)) {
                 Ok(_) => log::debug!("reported batch"),
                 Err(e) => {
@@ -319,6 +319,11 @@ where
 
 #[cfg(test)]
 mod test {
+    use crate::pipeline::aggregation::statistic_set::StatisticSet;
+    use crate::pipeline::aggregation::Aggregation;
+    use crate::pipeline::aggregator::{AggregatedMetricsMap, DimensionedMeasurementsMap};
+    use crate::pipeline::Sink;
+    use crate::types::{Dimension, Name};
     use crate::{
         allocator::{
             always_new_metrics_allocator::AlwaysNewMetricsAllocator,
@@ -333,6 +338,9 @@ mod test {
             stream_sink::StreamSink,
         },
     };
+    use std::collections::{BTreeMap, HashMap};
+    use std::sync::Arc;
+    use std::time::{Duration, SystemTime};
 
     use super::MetricsFactory;
 
@@ -409,5 +417,97 @@ mod test {
         }
 
         let _metrics_that_shares_the_sink = cloned.record_scope("scope_name");
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn gauges() {
+        struct DropSink;
+        impl Sink<Metrics> for DropSink {
+            fn accept(&self, _: Metrics) {}
+        }
+
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(128);
+
+        let metrics_factory: Arc<MetricsFactory<AlwaysNewMetricsAllocator, DropSink>> =
+            Arc::new(MetricsFactory::new(DropSink));
+
+        let non_dimensioned_gauge = metrics_factory.gauge("my_gauges", "non_dimensioned_gauge");
+        let dimensioned_gauge_one = metrics_factory.dimensioned_gauge(
+            "my_other_gauges",
+            "dimensioned_gauge",
+            [("test", "dimension")],
+        );
+        let dimensioned_gauge_two = metrics_factory.dimensioned_gauge(
+            "my_other_gauges",
+            "dimensioned_gauge_two",
+            [("test", "dimension")],
+        );
+
+        let batch_fn = |_timestamp: SystemTime,
+                        _duration: Duration,
+                        batch: &mut AggregatedMetricsMap|
+         -> HashMap<Name, DimensionedMeasurementsMap> {
+            std::mem::take(batch)
+        };
+
+        non_dimensioned_gauge.observe(20);
+        non_dimensioned_gauge.observe(22);
+        dimensioned_gauge_one.observe(100);
+        dimensioned_gauge_two.observe(10);
+
+        tokio::task::spawn(metrics_factory.clone().report_gauges_forever(
+            Duration::from_secs(1),
+            sender,
+            batch_fn,
+        ));
+
+        let result = receiver.recv().await.unwrap();
+
+        assert_eq!(
+            HashMap::from([
+                (
+                    Name::from("my_gauges"),
+                    HashMap::from([(
+                        BTreeMap::from([]),
+                        HashMap::from([(
+                            Name::from("non_dimensioned_gauge"),
+                            Aggregation::StatisticSet(StatisticSet {
+                                min: 20,
+                                max: 22,
+                                sum: 42,
+                                count: 2,
+                            })
+                        )])
+                    )])
+                ),
+                (
+                    Name::from("my_other_gauges"),
+                    HashMap::from([(
+                        BTreeMap::from([(Name::from("test"), Dimension::from("dimension"))]),
+                        HashMap::from([
+                            (
+                                Name::from("dimensioned_gauge"),
+                                Aggregation::StatisticSet(StatisticSet {
+                                    min: 100,
+                                    max: 100,
+                                    sum: 100,
+                                    count: 1,
+                                })
+                            ),
+                            (
+                                Name::from("dimensioned_gauge_two"),
+                                Aggregation::StatisticSet(StatisticSet {
+                                    min: 10,
+                                    max: 10,
+                                    sum: 10,
+                                    count: 1,
+                                })
+                            ),
+                        ])
+                    )])
+                )
+            ]),
+            result
+        );
     }
 }
