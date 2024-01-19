@@ -5,7 +5,7 @@ use std::{
 
 use crate::pipeline::aggregation::statistic_set::StatisticSet;
 
-/// A guage is a compromise for high throughput metrics. Sometimes you can't afford to
+/// A gauge is a compromise for high throughput metrics. Sometimes you can't afford to
 /// allocate a Metrics object to record something, and you can let go of some detail
 /// to still be able to record some information. This is the compromise a Gauge allows.
 ///
@@ -16,6 +16,7 @@ use crate::pipeline::aggregation::statistic_set::StatisticSet;
 /// Gauges have internal signed 64 bit integers for sum. This means you can definitely
 /// cause a Gauge to roll over if you record a lot of large numbers and/or report
 /// infrequently.
+#[derive(Debug)]
 pub struct StatisticSetGauge {
     count: AtomicU64,
     sum: AtomicI64,
