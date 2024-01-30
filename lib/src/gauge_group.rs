@@ -47,7 +47,7 @@ impl GaugeGroup {
         }
     }
 
-    // reset gauge group, aggregating and returning previous values
+    /// reset gauge group to 0's, returning the current aggregations
     pub fn reset(&mut self) -> DimensionedMeasurementsMap {
         self.dimensioned_gauges
             .retain(|_dimension_position, gauges| {
