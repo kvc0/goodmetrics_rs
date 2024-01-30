@@ -221,11 +221,10 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
             .expect("local mutex should not be poisoned");
         let gauge_group = gauge_group.into();
         match locked_groups.get_mut(&gauge_group) {
-            Some(group) => group.dimensioned_gauge(gauge_name, gauge_dimensions.dimension_position),
+            Some(group) => group.dimensioned_gauge(gauge_name, gauge_dimensions.into()),
             None => {
                 let mut group = GaugeGroup::default();
-                let gauge =
-                    group.dimensioned_gauge(gauge_name, gauge_dimensions.dimension_position);
+                let gauge = group.dimensioned_gauge(gauge_name, gauge_dimensions.into());
                 locked_groups.insert(gauge_group, group);
                 gauge
             }
@@ -428,15 +427,13 @@ mod test {
             Arc::new(MetricsFactory::new(DropSink));
 
         let non_dimensioned_gauge = metrics_factory.gauge("test_gauges", "non_dimensioned_gauge");
+        let mut dimensions = GaugeDimensions::new([("test", "dimension")]);
+        dimensions.insert("other", 1_u32);
         let dimensioned_gauge_one = metrics_factory.dimensioned_gauge(
             "test_dimensioned_gauges",
             "dimensioned_gauge_one",
-            GaugeDimensions::new()
-                .with_dimension("test", "dimension")
-                .with_dimension("other", 1_u32),
+            dimensions.clone(),
         );
-        let mut dimensions = GaugeDimensions::from("test", "dimension");
-        dimensions.insert("other", 1_u32);
         let dimensioned_gauge_two = metrics_factory.dimensioned_gauge(
             "test_dimensioned_gauges",
             "dimensioned_gauge_two",

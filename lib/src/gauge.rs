@@ -79,29 +79,27 @@ impl StatisticSetGauge {
 
 /// A GaugeDimensions is a group of dimensions to be used with a gauge.
 /// It is consumed when the gauge is created.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct GaugeDimensions {
-    pub dimension_position: DimensionPosition,
+    dimension_position: DimensionPosition,
 }
 
 impl GaugeDimensions {
-    /// Create a new, empty, GaugeDimensions
-    pub fn new() -> Self {
-        Self {
-            dimension_position: Default::default(),
-        }
-    }
-
-    /// Create a new GaugeDimensions from a given name and dimension
+    /// Create a new GaugeDimensions
     ///
     /// ```
-    /// use goodmetrics::gauge::GaugeDimensions;
-    ///
-    /// GaugeDimensions::from("a", "dimension");
+    /// # use goodmetrics::gauge::GaugeDimensions;
+    /// GaugeDimensions::new([("a", "dimension"), ("another", "dimension")]);
     /// ```
-    pub fn from(name: impl Into<Name>, dimension: impl Into<Dimension>) -> Self {
+    pub fn new(
+        dimensions: impl IntoIterator<Item = (impl Into<Name>, impl Into<Dimension>)>,
+    ) -> Self {
         Self {
-            dimension_position: BTreeMap::from([(name.into(), dimension.into())]),
+            dimension_position: BTreeMap::from_iter(
+                dimensions
+                    .into_iter()
+                    .map(|(name, dimension)| (name.into(), dimension.into())),
+            ),
         }
     }
 
@@ -120,22 +118,10 @@ impl GaugeDimensions {
             .insert(name.into(), dimension.into());
         self
     }
+}
 
-    /// Add a name/dimension to the GaugeDimensions, taking and returning ownership of self.
-    /// For chaining in value positions without an intermediate `let`
-    ///
-    /// ```
-    /// use goodmetrics::gauge::GaugeDimensions;
-    ///
-    /// GaugeDimensions::from("a", "dimension").with_dimension("another", "dimension");
-    /// ```
-    pub fn with_dimension(
-        mut self,
-        name: impl Into<Name>,
-        dimension: impl Into<Dimension>,
-    ) -> Self {
-        self.dimension_position
-            .insert(name.into(), dimension.into());
-        self
+impl From<GaugeDimensions> for DimensionPosition {
+    fn from(value: GaugeDimensions) -> Self {
+        value.dimension_position
     }
 }
