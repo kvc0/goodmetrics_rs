@@ -447,8 +447,16 @@ mod test {
             "dimensioned_gauge_two",
             dimensions.clone(),
         );
-        let _unused_gauge_in_gauge_group = metrics_factory.dimensioned_gauge("test_dimensioned_gauges", "unused_gauge", GaugeDimensions::new([("unused", "dimension")]));
-        let _unused_gauge_with_same_dimensions = metrics_factory.dimensioned_gauge("test_dimensioned_gauges", "unused_gauge", dimensions);
+        let _unused_gauge_in_gauge_group = metrics_factory.dimensioned_gauge(
+            "test_dimensioned_gauges",
+            "unused_gauge",
+            GaugeDimensions::new([("unused", "dimension")]),
+        );
+        let _unused_gauge_with_same_dimensions = metrics_factory.dimensioned_gauge(
+            "test_dimensioned_gauges",
+            "unused_gauge",
+            dimensions,
+        );
 
         let batch_fn =
             |_timestamp: SystemTime,
