@@ -109,7 +109,7 @@ impl GaugeDimensions {
     /// ```
     /// use goodmetrics::gauge::GaugeDimensions;
     ///
-    /// let mut dimensions = GaugeDimensions::new();
+    /// let mut dimensions = GaugeDimensions::default();
     /// dimensions.insert("a", "dimension");
     /// dimensions.insert("another", "dimension");
     /// ```
