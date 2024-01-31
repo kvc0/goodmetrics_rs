@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::pipeline::aggregation::Aggregation;
-use crate::pipeline::aggregator::DimensionedMeasurementsMap;
+use crate::pipeline::aggregator::{DimensionedMeasurementsMap, MeasurementAggregationMap};
 use crate::{
     gauge::{self, StatisticSetGauge},
     pipeline::aggregator::DimensionPosition,
@@ -13,8 +13,7 @@ use crate::{
 
 #[derive(Default)]
 pub struct GaugeGroup {
-    pub(crate) dimensioned_gauges:
-        HashMap<DimensionPosition, HashMap<Name, Weak<StatisticSetGauge>>>,
+    dimensioned_gauges: HashMap<DimensionPosition, HashMap<Name, Weak<StatisticSetGauge>>>,
 }
 
 impl GaugeGroup {
@@ -57,21 +56,23 @@ impl GaugeGroup {
 
         self.dimensioned_gauges
             .iter()
-            .map(|(dimension_position, gauges)| {
-                (
-                    dimension_position.to_owned(),
-                    gauges
-                        .iter()
-                        .filter_map(|(name, possible_gauge)| {
-                            possible_gauge
-                                .upgrade()
-                                .and_then(|gauge| gauge.reset())
-                                .map(|statistic_set| {
-                                    (name.to_owned(), Aggregation::StatisticSet(statistic_set))
-                                })
-                        })
-                        .collect(),
-                )
+            .filter_map(|(dimension_position, possible_gauges)| {
+                let gauges: MeasurementAggregationMap = possible_gauges
+                    .iter()
+                    .filter_map(|(name, possible_gauge)| {
+                        possible_gauge
+                            .upgrade()
+                            .and_then(|gauge| gauge.reset())
+                            .map(|statistic_set| {
+                                (name.to_owned(), Aggregation::StatisticSet(statistic_set))
+                            })
+                    })
+                    .collect();
+                if gauges.is_empty() {
+                    None
+                } else {
+                    Some((dimension_position.to_owned(), gauges))
+                }
             })
             .collect()
     }
