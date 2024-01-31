@@ -6,6 +6,7 @@ use std::{
 
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
+use crate::gauge::GaugeDimensions;
 use crate::{
     allocator::{
         returning_reference::{ReturnTarget, ReturningRef},
@@ -14,11 +15,7 @@ use crate::{
     gauge::StatisticSetGauge,
     gauge_group::GaugeGroup,
     metrics::MetricsBehavior,
-    pipeline::{
-        aggregation::Aggregation,
-        aggregator::{AggregatedMetricsMap, DimensionPosition, DimensionedMeasurementsMap},
-        Sink,
-    },
+    pipeline::{aggregator::AggregatedMetricsMap, Sink},
     types::Name,
 };
 
@@ -208,16 +205,26 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
         gauge_group: impl Into<Name>,
         gauge_name: impl Into<Name>,
     ) -> Arc<StatisticSetGauge> {
+        self.dimensioned_gauge(gauge_group, gauge_name, Default::default())
+    }
+
+    /// Get a gauge within a group, of a particular name, with specified dimensions.
+    pub fn dimensioned_gauge(
+        &self,
+        gauge_group: impl Into<Name>,
+        gauge_name: impl Into<Name>,
+        gauge_dimensions: GaugeDimensions,
+    ) -> Arc<StatisticSetGauge> {
         let mut locked_groups = self
             .gauge_groups
             .lock()
             .expect("local mutex should not be poisoned");
         let gauge_group = gauge_group.into();
         match locked_groups.get_mut(&gauge_group) {
-            Some(group) => group.gauge(gauge_name),
+            Some(group) => group.dimensioned_gauge(gauge_name, gauge_dimensions.into()),
             None => {
                 let mut group = GaugeGroup::default();
-                let gauge = group.gauge(gauge_name);
+                let gauge = group.dimensioned_gauge(gauge_name, gauge_dimensions.into());
                 locked_groups.insert(gauge_group, group);
                 gauge
             }
@@ -245,19 +252,13 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
                 .lock()
                 .expect("local mutex should not be poisoned")
                 .iter_mut()
-                .map(|(group_name, gauge_group)| {
-                    (
-                        group_name.to_owned(),
-                        DimensionedMeasurementsMap::from_iter(vec![(
-                            DimensionPosition::new(),
-                            gauge_group
-                                .reset()
-                                .map(|(name, statistic_set)| {
-                                    (name, Aggregation::StatisticSet(statistic_set))
-                                })
-                                .collect(),
-                        )]),
-                    )
+                .filter_map(|(group_name, gauge_group)| {
+                    let possible_dimensioned_measurements = gauge_group.reset();
+                    if possible_dimensioned_measurements.is_empty() {
+                        None
+                    } else {
+                        Some((group_name.to_owned(), possible_dimensioned_measurements))
+                    }
                 })
                 .collect();
             match sender.try_send(make_batch(now, period, &mut gauges)) {
@@ -319,6 +320,12 @@ where
 
 #[cfg(test)]
 mod test {
+    use crate::gauge::GaugeDimensions;
+    use crate::pipeline::aggregation::statistic_set::StatisticSet;
+    use crate::pipeline::aggregation::Aggregation;
+    use crate::pipeline::aggregator::{AggregatedMetricsMap, DimensionedMeasurementsMap};
+    use crate::pipeline::Sink;
+    use crate::types::{Dimension, Name};
     use crate::{
         allocator::{
             always_new_metrics_allocator::AlwaysNewMetricsAllocator,
@@ -333,6 +340,9 @@ mod test {
             stream_sink::StreamSink,
         },
     };
+    use std::collections::{BTreeMap, HashMap, HashSet};
+    use std::sync::Arc;
+    use std::time::{Duration, SystemTime};
 
     use super::MetricsFactory;
 
@@ -409,5 +419,121 @@ mod test {
         }
 
         let _metrics_that_shares_the_sink = cloned.record_scope("scope_name");
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn gauges() {
+        struct DropSink;
+        impl Sink<Metrics> for DropSink {
+            fn accept(&self, _: Metrics) {}
+        }
+
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(128);
+
+        let metrics_factory: Arc<MetricsFactory<AlwaysNewMetricsAllocator, DropSink>> =
+            Arc::new(MetricsFactory::new(DropSink));
+
+        let _unused_gauge_group = metrics_factory.gauge("unused_gauge_group", "unused_gauge");
+        let non_dimensioned_gauge = metrics_factory.gauge("test_gauges", "non_dimensioned_gauge");
+        let mut dimensions = GaugeDimensions::new([("test", "dimension")]);
+        dimensions.insert("other", 1_u32);
+        let dimensioned_gauge_one = metrics_factory.dimensioned_gauge(
+            "test_dimensioned_gauges",
+            "dimensioned_gauge_one",
+            dimensions.clone(),
+        );
+        let dimensioned_gauge_two = metrics_factory.dimensioned_gauge(
+            "test_dimensioned_gauges",
+            "dimensioned_gauge_two",
+            dimensions.clone(),
+        );
+        let _unused_gauge_in_gauge_group = metrics_factory.dimensioned_gauge(
+            "test_dimensioned_gauges",
+            "unused_gauge",
+            GaugeDimensions::new([("unused", "dimension")]),
+        );
+        let _unused_gauge_with_same_dimensions = metrics_factory.dimensioned_gauge(
+            "test_dimensioned_gauges",
+            "unused_gauge",
+            dimensions,
+        );
+
+        let batch_fn =
+            |_timestamp: SystemTime,
+             _duration: Duration,
+             batch: &mut AggregatedMetricsMap|
+             -> HashMap<Name, DimensionedMeasurementsMap> { std::mem::take(batch) };
+
+        non_dimensioned_gauge.observe(20);
+        non_dimensioned_gauge.observe(22);
+        dimensioned_gauge_one.observe(100);
+        dimensioned_gauge_two.observe(10);
+
+        tokio::task::spawn(metrics_factory.clone().report_gauges_forever(
+            Duration::from_millis(1),
+            sender,
+            batch_fn,
+        ));
+
+        let result = receiver.recv().await.expect("should have received metrics");
+        assert_eq!(
+            HashSet::from([
+                &Name::from("test_gauges"),
+                &Name::from("test_dimensioned_gauges")
+            ]),
+            result.keys().collect::<HashSet<&Name>>()
+        );
+
+        assert_eq!(
+            &HashMap::from([(
+                BTreeMap::from([]),
+                HashMap::from([(
+                    Name::from("non_dimensioned_gauge"),
+                    Aggregation::StatisticSet(StatisticSet {
+                        min: 20,
+                        max: 22,
+                        sum: 42,
+                        count: 2,
+                    })
+                )])
+            )]),
+            result
+                .get(&Name::from("test_gauges"))
+                .expect("should have found data for gauge group `test_gauges`")
+        );
+
+        let dimensioned_gauges_result = result
+            .get(&Name::from("test_dimensioned_gauges"))
+            .expect("should have found data for gauge group `test_dimensioned_gauges`");
+
+        assert_eq!(
+            &HashMap::from([(
+                BTreeMap::from([
+                    (Name::from("test"), Dimension::from("dimension")),
+                    (Name::from("other"), Dimension::from(1_u32)),
+                ]),
+                HashMap::from([
+                    (
+                        Name::from("dimensioned_gauge_one"),
+                        Aggregation::StatisticSet(StatisticSet {
+                            min: 100,
+                            max: 100,
+                            sum: 100,
+                            count: 1,
+                        })
+                    ),
+                    (
+                        Name::from("dimensioned_gauge_two"),
+                        Aggregation::StatisticSet(StatisticSet {
+                            min: 10,
+                            max: 10,
+                            sum: 10,
+                            count: 1,
+                        })
+                    ),
+                ])
+            ),]),
+            dimensioned_gauges_result
+        );
     }
 }
