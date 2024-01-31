@@ -252,7 +252,14 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
                 .lock()
                 .expect("local mutex should not be poisoned")
                 .iter_mut()
-                .map(|(group_name, gauge_group)| (group_name.to_owned(), gauge_group.reset()))
+                .filter_map(|(group_name, gauge_group)| {
+                    let possible_dimensioned_measurements = gauge_group.reset();
+                    if possible_dimensioned_measurements.is_empty() {
+                        None
+                    } else {
+                        Some((group_name.to_owned(), possible_dimensioned_measurements))
+                    }
+                })
                 .collect();
             match sender.try_send(make_batch(now, period, &mut gauges)) {
                 Ok(_) => log::debug!("reported batch"),
@@ -426,6 +433,7 @@ mod test {
         let metrics_factory: Arc<MetricsFactory<AlwaysNewMetricsAllocator, DropSink>> =
             Arc::new(MetricsFactory::new(DropSink));
 
+        let _unused_gauge_group = metrics_factory.gauge("unused_gauge_group", "unused_gauge");
         let non_dimensioned_gauge = metrics_factory.gauge("test_gauges", "non_dimensioned_gauge");
         let mut dimensions = GaugeDimensions::new([("test", "dimension")]);
         dimensions.insert("other", 1_u32);
