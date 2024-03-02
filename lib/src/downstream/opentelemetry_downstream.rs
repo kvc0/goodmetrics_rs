@@ -6,7 +6,7 @@ use std::{
 
 use tokio::sync::mpsc;
 
-use crate::pipeline::{aggregation::histogram::Histogram, aggregator::AggregatedMetricsMap};
+use crate::{pipeline::{aggregation::{exponential_histogram::ExponentialHistogram, histogram::Histogram}, aggregator::AggregatedMetricsMap}, proto::opentelemetry::metrics::v1::{exponential_histogram_data_point::Buckets, ExponentialHistogramDataPoint}};
 use crate::proto::opentelemetry::resource::v1::Resource;
 use crate::{
     pipeline::{
@@ -131,6 +131,16 @@ fn as_metrics(
             measurements
                 .drain()
                 .flat_map(|(measurement_name, aggregation)| match aggregation {
+                    Aggregation::ExponentialHistogram(eh) => {
+                        vec![Metric {
+                            name: format!("{name}_{measurement_name}"),
+                            description: "".into(),
+                            unit: "1".into(),
+                            data: Some(opentelemetry::metrics::v1::metric::Data::ExponentialHistogram(
+                                as_otel_exponential_histogram(eh, timestamp, duration, otel_dimensions.clone())
+                            )),
+                        }]
+                    }
                     Aggregation::Histogram(h) => {
                         vec![Metric {
                             name: format!("{name}_{measurement_name}"),
@@ -348,6 +358,46 @@ fn as_otel_histogram(
             flags: DataPointFlags::FlagNone as u32, // i don't send useless buckets
             min: bucket_values_min,                 // just use the histogram...
             max: bucket_values_max,                 // just use the histogram...
+        }],
+    }
+}
+
+fn as_otel_exponential_histogram(
+    mut exponential_histogram: ExponentialHistogram,
+    timestamp: SystemTime,
+    duration: Duration,
+    attributes: Vec<KeyValue>,
+) -> opentelemetry::metrics::v1::ExponentialHistogram {
+    let timestamp_nanos = timestamp.nanos_since_epoch();
+
+    opentelemetry::metrics::v1::ExponentialHistogram {
+        aggregation_temporality: THE_ONLY_SANE_TEMPORALITY,
+        data_points: vec![ExponentialHistogramDataPoint {
+            attributes,
+            start_time_unix_nano: timestamp_nanos - duration.as_nanos() as u64,
+            time_unix_nano: timestamp_nanos,
+            count: exponential_histogram.count() as u64,
+            sum: if exponential_histogram.has_negatives() {
+                0_f64
+            } else {
+                exponential_histogram.sum() as f64
+            },
+            exemplars: vec![],                                // just no.
+            flags: DataPointFlags::FlagNone as u32,           // i don't send useless buckets
+            min: exponential_histogram.min(),                 // just use the histogram...
+            max: exponential_histogram.max(),                 // just use the histogram...
+            scale: exponential_histogram.scale() as i32,
+            zero_count: 0, // I don't do this yet
+            positive: Some(Buckets {
+                // TODO: decide what to do about dynamic Scale scaling
+                offset: 0,
+                bucket_counts: exponential_histogram.take_positives().into_iter().map(|u| u as u64).collect()
+            }),
+            negative: Some(Buckets {
+                // TODO: decide what to do about dynamic Scale scaling
+                offset: 0,
+                bucket_counts: exponential_histogram.take_negatives().into_iter().map(|u| u as u64).collect()
+            }),
         }],
     }
 }

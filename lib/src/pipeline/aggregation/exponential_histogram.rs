@@ -1,19 +1,22 @@
-use std::{cmp::min, f64::consts::{E, LN_2, LOG2_E}};
+use std::{cmp::min, f64::consts::{E, LN_2, LOG2_E}, sync::atomic::Ordering};
+
+use crate::{pipeline::AbsorbDistribution, types::Distribution};
 
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExponentialHistogram {
-    scale: u32,
-    max_bucket_index: u32,
+    scale: u8,
+    max_bucket_index: u16,
     positive_buckets: Vec<usize>,
     negative_buckets: Vec<usize>,
 }
 
 impl ExponentialHistogram {
-    pub fn new(scale: u32) -> Self {
+    pub fn new(scale: u8) -> Self {
         Self::new_with_max_buckets(scale, 160)
     }
 
-    pub fn new_with_max_buckets(scale: u32, max_buckets: u32) -> Self {
+    pub fn new_with_max_buckets(scale: u8, max_buckets: u16) -> Self {
         Self {
             scale,
             max_bucket_index: max_buckets - 1,
@@ -43,6 +46,68 @@ impl ExponentialHistogram {
         buckets[index] += 1;
     }
 
+    pub fn count(&self) -> usize {
+        let mut count = 0;
+        for i in &self.positive_buckets {
+            count += *i;
+        }
+        for i in &self.negative_buckets {
+            count += *i;
+        }
+        count
+    }
+
+    /// This is an approximation, just using the positive buckets for the sum.
+    pub fn sum(&self) -> f64 {
+        self.positive_buckets.iter()
+            .enumerate()
+            .map(|(index, count)| self.lower_boundary(index) * *count as f64)
+            .sum()
+    }
+
+    /// This is an approximation, just using the positive buckets for the min.
+    pub fn min(&self) -> f64 {
+        self.positive_buckets.iter()
+            .enumerate()
+            .filter(|(_, count)| 0 < **count)
+            .map(|(index, _count)| self.lower_boundary(index))
+            .next()
+            .unwrap_or_default()
+    }
+
+    /// This is an approximation, just using the positive buckets for the max.
+    pub fn max(&self) -> f64 {
+        self.positive_buckets.iter()
+            .enumerate()
+            .rev()
+            .filter(|(_, count)| 0 < **count)
+            .map(|(index, _count)| self.lower_boundary(index))
+            .next()
+            .unwrap_or_default()
+    }
+
+    pub fn scale(&self) -> u8 {
+        self.scale
+    }
+
+    pub fn take_positives(&mut self) -> Vec<usize> {
+        std::mem::take(&mut self.positive_buckets)
+    }
+
+    pub fn take_negatives(&mut self) -> Vec<usize> {
+        std::mem::take(&mut self.negative_buckets)
+    }
+
+    pub fn has_negatives(&self) -> bool {
+        !self.negative_buckets.is_empty()
+    }
+
+    pub fn value_counts(&self) -> impl Iterator<Item = (f64, usize)> + '_ {
+        self.negative_buckets.iter().enumerate().map(|(index, count)| (self.lower_boundary(index), *count)).chain(
+            self.positive_buckets.iter().enumerate().map(|(index, count)| (self.lower_boundary(index), *count))
+        )
+    }
+
     /// treats negative numbers as positive - you gotta accumulate into a negative array
     fn map_to_index(&self, raw_value: f64) -> usize {
         let value = raw_value.abs();
@@ -60,6 +125,25 @@ impl ExponentialHistogram {
         let index = min(self.max_bucket_index as usize, index);
         let inverse_scale_factor = LN_2 * 2_f64.powi(-(self.scale as i32));
         (index as f64 * inverse_scale_factor).exp()
+    }
+}
+
+impl AbsorbDistribution for ExponentialHistogram {
+    fn absorb(&mut self, distribution: crate::types::Distribution) {
+        match distribution {
+            Distribution::I64(i) => self.accumulate(i as f64),
+            Distribution::I32(i) => self.accumulate(i),
+            Distribution::U64(u) => self.accumulate(u as f64),
+            Distribution::U32(u) => self.accumulate(u),
+            Distribution::Collection(c) => {
+                for i in c {
+                    self.accumulate(i as f64)
+                }
+            }
+            Distribution::Timer { nanos } => {
+                self.accumulate(nanos.load(Ordering::Relaxed) as f64)
+            }
+        }
     }
 }
 

@@ -14,8 +14,7 @@ use crate::{
 
 use super::{
     aggregation::{
-        histogram::Histogram, online_tdigest::OnlineTdigest, statistic_set::StatisticSet,
-        Aggregation,
+        exponential_histogram::ExponentialHistogram, histogram::Histogram, online_tdigest::OnlineTdigest, statistic_set::StatisticSet, Aggregation
     },
     AbsorbDistribution,
 };
@@ -33,6 +32,10 @@ pub type MeasurementAggregationMap = HashMap<Name, Aggregation>;
 
 #[derive(Debug)]
 pub enum DistributionMode {
+    /// Follows the opentelemetry standard for histogram buckets.
+    ExponentialHistogram {
+        max_buckets: u16,
+    },
     /// Less space-efficient, less performant, but easy to understand.
     Histogram,
     /// Fancy sparse sketch distributions. Currently only compatible with
@@ -248,6 +251,9 @@ where
                     DistributionMode::TDigest => {
                         accumulate_tdigest(measurements_map, name, distribution);
                     }
+                    DistributionMode::ExponentialHistogram { max_buckets } => {
+                        accumulate_exponential_histogram(measurements_map, name, distribution, max_buckets)
+                    }
                 },
             });
     }
@@ -281,6 +287,27 @@ fn accumulate_histogram(
         }
         Aggregation::Histogram(histogram) => histogram.absorb(distribution),
         Aggregation::TDigest(td) => td.absorb(distribution),
+        Aggregation::ExponentialHistogram(eh) => eh.absorb(distribution),
+    }
+}
+
+fn accumulate_exponential_histogram(
+    measurements_map: &mut HashMap<Name, Aggregation>,
+    name: Name,
+    distribution: types::Distribution,
+    max_buckets: u16,
+) {
+    match measurements_map
+        .entry(name)
+        // TODO: decide what to do with dynamic Scale scaling
+        .or_insert_with(|| Aggregation::ExponentialHistogram(ExponentialHistogram::new_with_max_buckets(2, max_buckets)))
+    {
+        Aggregation::StatisticSet(_s) => {
+            log::error!("conflicting measurement and distribution name")
+        }
+        Aggregation::Histogram(histogram) => histogram.absorb(distribution),
+        Aggregation::TDigest(td) => td.absorb(distribution),
+        Aggregation::ExponentialHistogram(eh) => eh.absorb(distribution),
     }
 }
 
@@ -298,6 +325,7 @@ fn accumulate_tdigest(
         }
         Aggregation::Histogram(histogram) => histogram.absorb(distribution),
         Aggregation::TDigest(td) => td.absorb(distribution),
+        Aggregation::ExponentialHistogram(eh) => eh.absorb(distribution),
     }
 }
 
@@ -315,6 +343,9 @@ fn accumulate_statisticset(
             log::error!("conflicting measurement and distribution name")
         }
         Aggregation::TDigest(_td) => {
+            log::error!("conflicting measurement and distribution name")
+        }
+        Aggregation::ExponentialHistogram(_eh) => {
             log::error!("conflicting measurement and distribution name")
         }
     }
