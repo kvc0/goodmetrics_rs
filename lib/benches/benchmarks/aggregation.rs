@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use criterion::Criterion;
+use criterion::{measurement::WallTime, BenchmarkGroup, Criterion};
 use goodmetrics::{
     allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator,
     downstream::opentelemetry_downstream::create_preaggregated_opentelemetry_batch,
@@ -20,9 +20,14 @@ pub fn aggregation(criterion: &mut Criterion) {
 
     let mut group = criterion.benchmark_group("aggregation");
     group.throughput(criterion::Throughput::Elements(1));
+    bench_distribution_mode(&mut group, DistributionMode::Histogram);
+    bench_distribution_mode(&mut group, DistributionMode::ExponentialHistogram { max_buckets: 160 });
+    bench_distribution_mode(&mut group, DistributionMode::TDigest);
+}
 
+fn bench_distribution_mode(group: &mut BenchmarkGroup<'_, WallTime>, distribution_mode: DistributionMode) {
     let (sink, receiver) = StreamSink::new();
-    let aggregator = Aggregator::new(receiver, DistributionMode::Histogram);
+    let aggregator = Aggregator::new(receiver, distribution_mode);
     let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, StreamSink<_>> =
         MetricsFactory::new(sink);
     let (aggregated_batch_sender, _r) = mpsc::channel(128);
@@ -37,8 +42,8 @@ pub fn aggregation(criterion: &mut Criterion) {
         create_preaggregated_opentelemetry_batch,
     ));
 
-    for threads in [1, 2, 4, 8, 16] {
-        group.bench_function(format!("concurrency-{threads:02}"), |bencher| {
+    for threads in [1, 4, 16] {
+        group.bench_function(format!("{distribution_mode}-concurrency-{threads:02}"), |bencher| {
             bencher.iter_custom(|iterations| {
                 let thread_count = max(1, min(threads, iterations));
                 let iterations_per_thread = iterations / thread_count;

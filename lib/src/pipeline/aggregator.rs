@@ -1,8 +1,5 @@
 use std::{
-    cmp::min,
-    collections::{BTreeMap, HashMap},
-    mem::replace,
-    time::{Duration, Instant, SystemTime},
+    cmp::min, collections::{BTreeMap, HashMap}, fmt::Display, mem::replace, time::{Duration, Instant, SystemTime}
 };
 
 use tokio::sync::mpsc;
@@ -30,7 +27,7 @@ pub type DimensionPosition = BTreeMap<Name, Dimension>;
 /// Within the dimension position there is a collection of named measurements; we'll store the aggregated view of these
 pub type MeasurementAggregationMap = HashMap<Name, Aggregation>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum DistributionMode {
     /// Follows the opentelemetry standard for histogram buckets.
     ExponentialHistogram {
@@ -42,6 +39,16 @@ pub enum DistributionMode {
     /// Goodmetrics downstream, and timescaledb via timescaledb_toolkit.
     /// You should prefer t-digests when they are available to you :-)
     TDigest,
+}
+
+impl Display for DistributionMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DistributionMode::ExponentialHistogram { max_buckets: _ } => f.write_str("exponential_histogram"),
+            DistributionMode::Histogram => f.write_str("histogram"),
+            DistributionMode::TDigest => f.write_str("t_digest"),
+        }
+    }
 }
 
 pub type SleepFunction = dyn Fn(Duration) + Send + Sync;
