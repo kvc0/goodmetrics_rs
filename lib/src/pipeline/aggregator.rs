@@ -1,5 +1,9 @@
 use std::{
-    cmp::min, collections::{BTreeMap, HashMap}, fmt::Display, mem::replace, time::{Duration, Instant, SystemTime}
+    cmp::min,
+    collections::{BTreeMap, HashMap},
+    fmt::Display,
+    mem::replace,
+    time::{Duration, Instant, SystemTime},
 };
 
 use tokio::sync::mpsc;
@@ -11,7 +15,8 @@ use crate::{
 
 use super::{
     aggregation::{
-        exponential_histogram::ExponentialHistogram, histogram::Histogram, online_tdigest::OnlineTdigest, statistic_set::StatisticSet, Aggregation
+        exponential_histogram::ExponentialHistogram, histogram::Histogram,
+        online_tdigest::OnlineTdigest, statistic_set::StatisticSet, Aggregation,
     },
     AbsorbDistribution,
 };
@@ -30,9 +35,7 @@ pub type MeasurementAggregationMap = HashMap<Name, Aggregation>;
 #[derive(Debug, Clone, Copy)]
 pub enum DistributionMode {
     /// Follows the opentelemetry standard for histogram buckets.
-    ExponentialHistogram {
-        max_buckets: u16,
-    },
+    ExponentialHistogram { max_buckets: u16 },
     /// Less space-efficient, less performant, but easy to understand.
     Histogram,
     /// Fancy sparse sketch distributions. Currently only compatible with
@@ -44,7 +47,9 @@ pub enum DistributionMode {
 impl Display for DistributionMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DistributionMode::ExponentialHistogram { max_buckets: _ } => f.write_str("exponential_histogram"),
+            DistributionMode::ExponentialHistogram { max_buckets: _ } => {
+                f.write_str("exponential_histogram")
+            }
             DistributionMode::Histogram => f.write_str("histogram"),
             DistributionMode::TDigest => f.write_str("t_digest"),
         }
@@ -259,7 +264,12 @@ where
                         accumulate_tdigest(measurements_map, name, distribution);
                     }
                     DistributionMode::ExponentialHistogram { max_buckets } => {
-                        accumulate_exponential_histogram(measurements_map, name, distribution, max_buckets)
+                        accumulate_exponential_histogram(
+                            measurements_map,
+                            name,
+                            distribution,
+                            max_buckets,
+                        )
                     }
                 },
             });
@@ -307,8 +317,12 @@ fn accumulate_exponential_histogram(
     match measurements_map
         .entry(name)
         // TODO: decide what to do with dynamic Scale scaling
-        .or_insert_with(|| Aggregation::ExponentialHistogram(ExponentialHistogram::new_with_max_buckets(2, max_buckets)))
-    {
+        .or_insert_with(|| {
+            Aggregation::ExponentialHistogram(ExponentialHistogram::new_with_max_buckets(
+                2,
+                max_buckets,
+            ))
+        }) {
         Aggregation::StatisticSet(_s) => {
             log::error!("conflicting measurement and distribution name")
         }

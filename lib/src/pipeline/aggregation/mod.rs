@@ -1,4 +1,7 @@
-use self::{exponential_histogram::ExponentialHistogram, histogram::Histogram, online_tdigest::OnlineTdigest, statistic_set::StatisticSet};
+use self::{
+    exponential_histogram::ExponentialHistogram, histogram::Histogram,
+    online_tdigest::OnlineTdigest, statistic_set::StatisticSet,
+};
 
 pub mod bucket;
 pub mod exponential_histogram;

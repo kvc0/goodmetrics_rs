@@ -6,7 +6,6 @@ use std::{
 
 use tokio::sync::mpsc;
 
-use crate::{pipeline::{aggregation::{exponential_histogram::ExponentialHistogram, histogram::Histogram}, aggregator::AggregatedMetricsMap}, proto::opentelemetry::metrics::v1::{exponential_histogram_data_point::Buckets, ExponentialHistogramDataPoint}};
 use crate::proto::opentelemetry::resource::v1::Resource;
 use crate::{
     pipeline::{
@@ -27,6 +26,15 @@ use crate::{
         },
     },
     types::{Dimension, Name},
+};
+use crate::{
+    pipeline::{
+        aggregation::{exponential_histogram::ExponentialHistogram, histogram::Histogram},
+        aggregator::AggregatedMetricsMap,
+    },
+    proto::opentelemetry::metrics::v1::{
+        exponential_histogram_data_point::Buckets, ExponentialHistogramDataPoint,
+    },
 };
 
 use super::{EpochTime, StdError};
@@ -136,9 +144,16 @@ fn as_metrics(
                             name: format!("{name}_{measurement_name}"),
                             description: "".into(),
                             unit: "1".into(),
-                            data: Some(opentelemetry::metrics::v1::metric::Data::ExponentialHistogram(
-                                as_otel_exponential_histogram(eh, timestamp, duration, otel_dimensions.clone())
-                            )),
+                            data: Some(
+                                opentelemetry::metrics::v1::metric::Data::ExponentialHistogram(
+                                    as_otel_exponential_histogram(
+                                        eh,
+                                        timestamp,
+                                        duration,
+                                        otel_dimensions.clone(),
+                                    ),
+                                ),
+                            ),
                         }]
                     }
                     Aggregation::Histogram(h) => {
@@ -380,23 +395,31 @@ fn as_otel_exponential_histogram(
             sum: if exponential_histogram.has_negatives() {
                 0_f64
             } else {
-                exponential_histogram.sum() as f64
+                exponential_histogram.sum()
             },
-            exemplars: vec![],                                // just no.
-            flags: DataPointFlags::FlagNone as u32,           // i don't send useless buckets
-            min: exponential_histogram.min(),                 // just use the histogram...
-            max: exponential_histogram.max(),                 // just use the histogram...
+            exemplars: vec![],                      // just no.
+            flags: DataPointFlags::FlagNone as u32, // i don't send useless buckets
+            min: exponential_histogram.min(),       // just use the histogram...
+            max: exponential_histogram.max(),       // just use the histogram...
             scale: exponential_histogram.scale() as i32,
             zero_count: 0, // I don't do this yet
             positive: Some(Buckets {
                 // TODO: decide what to do about dynamic Scale scaling
                 offset: 0,
-                bucket_counts: exponential_histogram.take_positives().into_iter().map(|u| u as u64).collect()
+                bucket_counts: exponential_histogram
+                    .take_positives()
+                    .into_iter()
+                    .map(|u| u as u64)
+                    .collect(),
             }),
             negative: Some(Buckets {
                 // TODO: decide what to do about dynamic Scale scaling
                 offset: 0,
-                bucket_counts: exponential_histogram.take_negatives().into_iter().map(|u| u as u64).collect()
+                bucket_counts: exponential_histogram
+                    .take_negatives()
+                    .into_iter()
+                    .map(|u| u as u64)
+                    .collect(),
             }),
         }],
     }
