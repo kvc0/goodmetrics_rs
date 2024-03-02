@@ -1,6 +1,7 @@
 use self::{histogram::Histogram, online_tdigest::OnlineTdigest, statistic_set::StatisticSet};
 
 pub mod bucket;
+pub mod exponential_histogram;
 pub mod histogram;
 pub mod online_tdigest;
 pub mod statistic_set;
