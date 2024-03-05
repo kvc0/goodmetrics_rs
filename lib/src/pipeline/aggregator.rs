@@ -1,6 +1,7 @@
 use std::{
     cmp::min,
     collections::{BTreeMap, HashMap},
+    fmt::Display,
     mem::replace,
     time::{Duration, Instant, SystemTime},
 };
@@ -14,8 +15,8 @@ use crate::{
 
 use super::{
     aggregation::{
-        histogram::Histogram, online_tdigest::OnlineTdigest, statistic_set::StatisticSet,
-        Aggregation,
+        exponential_histogram::ExponentialHistogram, histogram::Histogram,
+        online_tdigest::OnlineTdigest, statistic_set::StatisticSet, Aggregation,
     },
     AbsorbDistribution,
 };
@@ -31,14 +32,28 @@ pub type DimensionPosition = BTreeMap<Name, Dimension>;
 /// Within the dimension position there is a collection of named measurements; we'll store the aggregated view of these
 pub type MeasurementAggregationMap = HashMap<Name, Aggregation>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum DistributionMode {
+    /// Follows the opentelemetry standard for histogram buckets.
+    ExponentialHistogram { max_buckets: u16 },
     /// Less space-efficient, less performant, but easy to understand.
     Histogram,
     /// Fancy sparse sketch distributions. Currently only compatible with
     /// Goodmetrics downstream, and timescaledb via timescaledb_toolkit.
     /// You should prefer t-digests when they are available to you :-)
     TDigest,
+}
+
+impl Display for DistributionMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DistributionMode::ExponentialHistogram { max_buckets: _ } => {
+                f.write_str("exponential_histogram")
+            }
+            DistributionMode::Histogram => f.write_str("histogram"),
+            DistributionMode::TDigest => f.write_str("t_digest"),
+        }
+    }
 }
 
 pub type SleepFunction = dyn Fn(Duration) + Send + Sync;
@@ -248,6 +263,14 @@ where
                     DistributionMode::TDigest => {
                         accumulate_tdigest(measurements_map, name, distribution);
                     }
+                    DistributionMode::ExponentialHistogram { max_buckets } => {
+                        accumulate_exponential_histogram(
+                            measurements_map,
+                            name,
+                            distribution,
+                            max_buckets,
+                        )
+                    }
                 },
             });
     }
@@ -281,6 +304,31 @@ fn accumulate_histogram(
         }
         Aggregation::Histogram(histogram) => histogram.absorb(distribution),
         Aggregation::TDigest(td) => td.absorb(distribution),
+        Aggregation::ExponentialHistogram(eh) => eh.absorb(distribution),
+    }
+}
+
+fn accumulate_exponential_histogram(
+    measurements_map: &mut HashMap<Name, Aggregation>,
+    name: Name,
+    distribution: types::Distribution,
+    max_buckets: u16,
+) {
+    match measurements_map
+        .entry(name)
+        // TODO: decide what to do with dynamic Scale scaling
+        .or_insert_with(|| {
+            Aggregation::ExponentialHistogram(ExponentialHistogram::new_with_max_buckets(
+                2,
+                max_buckets,
+            ))
+        }) {
+        Aggregation::StatisticSet(_s) => {
+            log::error!("conflicting measurement and distribution name")
+        }
+        Aggregation::Histogram(histogram) => histogram.absorb(distribution),
+        Aggregation::TDigest(td) => td.absorb(distribution),
+        Aggregation::ExponentialHistogram(eh) => eh.absorb(distribution),
     }
 }
 
@@ -298,6 +346,7 @@ fn accumulate_tdigest(
         }
         Aggregation::Histogram(histogram) => histogram.absorb(distribution),
         Aggregation::TDigest(td) => td.absorb(distribution),
+        Aggregation::ExponentialHistogram(eh) => eh.absorb(distribution),
     }
 }
 
@@ -315,6 +364,9 @@ fn accumulate_statisticset(
             log::error!("conflicting measurement and distribution name")
         }
         Aggregation::TDigest(_td) => {
+            log::error!("conflicting measurement and distribution name")
+        }
+        Aggregation::ExponentialHistogram(_eh) => {
             log::error!("conflicting measurement and distribution name")
         }
     }

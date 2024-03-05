@@ -8,8 +8,8 @@ use tokio::sync::mpsc;
 use crate::{
     pipeline::{
         aggregation::{
-            online_tdigest::OnlineTdigest, statistic_set::StatisticSet, tdigest::Centroid,
-            Aggregation,
+            exponential_histogram::ExponentialHistogram, online_tdigest::OnlineTdigest,
+            statistic_set::StatisticSet, tdigest::Centroid, Aggregation,
         },
         aggregator::{AggregatedMetricsMap, DimensionedMeasurementsMap},
         AbsorbDistribution,
@@ -152,9 +152,23 @@ impl From<Aggregation> for proto::goodmetrics::Measurement {
                 Aggregation::TDigest(t_digest) => {
                     proto::goodmetrics::measurement::Value::Tdigest(t_digest.into())
                 }
+                Aggregation::ExponentialHistogram(histogram) => {
+                    proto::goodmetrics::measurement::Value::Histogram(
+                        proto::goodmetrics::Histogram {
+                            buckets: make_histogram(histogram),
+                        },
+                    )
+                }
             }),
         }
     }
+}
+
+fn make_histogram(eh: ExponentialHistogram) -> HashMap<i64, u64> {
+    HashMap::from_iter(
+        eh.value_counts()
+            .map(|(value, count)| (value.round() as i64, count as u64)),
+    )
 }
 
 impl From<Measurement> for proto::goodmetrics::Measurement {

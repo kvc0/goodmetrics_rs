@@ -1,6 +1,10 @@
-use self::{histogram::Histogram, online_tdigest::OnlineTdigest, statistic_set::StatisticSet};
+use self::{
+    exponential_histogram::ExponentialHistogram, histogram::Histogram,
+    online_tdigest::OnlineTdigest, statistic_set::StatisticSet,
+};
 
 pub mod bucket;
+pub mod exponential_histogram;
 pub mod histogram;
 pub mod online_tdigest;
 pub mod statistic_set;
@@ -13,6 +17,7 @@ pub mod tdigest;
 /// For collecting and periodically reporting
 #[derive(Debug, Clone)]
 pub enum Aggregation {
+    ExponentialHistogram(ExponentialHistogram),
     Histogram(Histogram),
     StatisticSet(StatisticSet),
     TDigest(OnlineTdigest),
@@ -21,6 +26,7 @@ pub enum Aggregation {
 impl PartialEq for Aggregation {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
+            (Self::ExponentialHistogram(l), Self::ExponentialHistogram(r)) => l == r,
             (Self::Histogram(l), Self::Histogram(r)) => l == r,
             (Self::StatisticSet(l), Self::StatisticSet(r)) => l == r,
             _ => false,
