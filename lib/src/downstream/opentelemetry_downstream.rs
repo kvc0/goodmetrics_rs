@@ -404,8 +404,7 @@ fn as_otel_exponential_histogram(
             scale: exponential_histogram.scale() as i32,
             zero_count: 0, // I don't do this yet
             positive: Some(Buckets {
-                // TODO: decide what to do about dynamic Scale scaling
-                offset: 0,
+                offset: exponential_histogram.bucket_start_offset() as i32,
                 bucket_counts: exponential_histogram
                     .take_positives()
                     .into_iter()
@@ -413,8 +412,7 @@ fn as_otel_exponential_histogram(
                     .collect(),
             }),
             negative: Some(Buckets {
-                // TODO: decide what to do about dynamic Scale scaling
-                offset: 0,
+                offset: exponential_histogram.bucket_start_offset() as i32,
                 bucket_counts: exponential_histogram
                     .take_negatives()
                     .into_iter()

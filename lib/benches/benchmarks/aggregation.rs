@@ -23,7 +23,10 @@ pub fn aggregation(criterion: &mut Criterion) {
     bench_distribution_mode(&mut group, DistributionMode::Histogram);
     bench_distribution_mode(
         &mut group,
-        DistributionMode::ExponentialHistogram { max_buckets: 160 },
+        DistributionMode::ExponentialHistogram {
+            max_buckets: 160,
+            desired_scale: 2,
+        },
     );
     bench_distribution_mode(&mut group, DistributionMode::TDigest);
 }

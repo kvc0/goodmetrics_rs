@@ -35,7 +35,7 @@ pub type MeasurementAggregationMap = HashMap<Name, Aggregation>;
 #[derive(Debug, Clone, Copy)]
 pub enum DistributionMode {
     /// Follows the opentelemetry standard for histogram buckets.
-    ExponentialHistogram { max_buckets: u16 },
+    ExponentialHistogram { max_buckets: u16, desired_scale: u8 },
     /// Less space-efficient, less performant, but easy to understand.
     Histogram,
     /// Fancy sparse sketch distributions. Currently only compatible with
@@ -47,9 +47,10 @@ pub enum DistributionMode {
 impl Display for DistributionMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DistributionMode::ExponentialHistogram { max_buckets: _ } => {
-                f.write_str("exponential_histogram")
-            }
+            DistributionMode::ExponentialHistogram {
+                max_buckets: _,
+                desired_scale: _,
+            } => f.write_str("exponential_histogram"),
             DistributionMode::Histogram => f.write_str("histogram"),
             DistributionMode::TDigest => f.write_str("t_digest"),
         }
@@ -263,14 +264,16 @@ where
                     DistributionMode::TDigest => {
                         accumulate_tdigest(measurements_map, name, distribution);
                     }
-                    DistributionMode::ExponentialHistogram { max_buckets } => {
-                        accumulate_exponential_histogram(
-                            measurements_map,
-                            name,
-                            distribution,
-                            max_buckets,
-                        )
-                    }
+                    DistributionMode::ExponentialHistogram {
+                        max_buckets,
+                        desired_scale,
+                    } => accumulate_exponential_histogram(
+                        measurements_map,
+                        name,
+                        distribution,
+                        max_buckets,
+                        desired_scale,
+                    ),
                 },
             });
     }
@@ -313,16 +316,14 @@ fn accumulate_exponential_histogram(
     name: Name,
     distribution: types::Distribution,
     max_buckets: u16,
+    desired_scale: u8,
 ) {
-    match measurements_map
-        .entry(name)
-        // TODO: decide what to do with dynamic Scale scaling
-        .or_insert_with(|| {
-            Aggregation::ExponentialHistogram(ExponentialHistogram::new_with_max_buckets(
-                2,
-                max_buckets,
-            ))
-        }) {
+    match measurements_map.entry(name).or_insert_with(|| {
+        Aggregation::ExponentialHistogram(ExponentialHistogram::new_with_max_buckets(
+            desired_scale,
+            max_buckets,
+        ))
+    }) {
         Aggregation::StatisticSet(_s) => {
             log::error!("conflicting measurement and distribution name")
         }
