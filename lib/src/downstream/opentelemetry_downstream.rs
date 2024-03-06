@@ -6,7 +6,7 @@ use std::{
 
 use tokio::sync::mpsc;
 
-use crate::proto::opentelemetry::resource::v1::Resource;
+use crate::proto::opentelemetry::{metrics::v1::Gauge, resource::v1::Resource};
 use crate::{
     pipeline::{
         aggregation::{
@@ -39,8 +39,12 @@ use crate::{
 
 use super::{EpochTime, StdError};
 
-// anything other than Delta is bugged by design. So yeah, opentelemetry metrics spec is bugged by design.
-const THE_ONLY_SANE_TEMPORALITY: i32 = AggregationTemporality::Delta as i32;
+/// Goodmetrics only records "delta" data as that word is understood by opentelemetry.
+/// Goodmetrics records windows of aggregation_width and submits whatever was recorded
+/// during each window. While there are some possibly-legitimate cases for something
+/// marked as cumulative, goodmetrics is oriented instead toward high-cardinality
+/// actions rather than system counters.
+const THE_ACTUAL_TEMPORALITY: i32 = AggregationTemporality::Delta as i32;
 
 /// Compatibility adapter downstream for OTLP. No dependency on opentelemetry code,
 /// only their protos. All your measurements will be Delta temporality.
@@ -222,7 +226,7 @@ fn as_otel_statistic_set(
         .as_nanos() as u64;
     let start_nanos = timestamp_nanos - duration.as_nanos() as u64;
     vec![
-        statistic_set_component(
+        statistic_set_gauge_component(
             full_measurement_name,
             timestamp_nanos,
             start_nanos,
@@ -230,7 +234,7 @@ fn as_otel_statistic_set(
             "min",
             statistic_set.min.into(),
         ),
-        statistic_set_component(
+        statistic_set_gauge_component(
             full_measurement_name,
             timestamp_nanos,
             start_nanos,
@@ -238,7 +242,7 @@ fn as_otel_statistic_set(
             "max",
             statistic_set.max.into(),
         ),
-        statistic_set_component(
+        statistic_set_counter_component(
             full_measurement_name,
             timestamp_nanos,
             start_nanos,
@@ -246,7 +250,7 @@ fn as_otel_statistic_set(
             "sum",
             statistic_set.sum.into(),
         ),
-        statistic_set_component(
+        statistic_set_counter_component(
             full_measurement_name,
             timestamp_nanos,
             start_nanos,
@@ -275,7 +279,8 @@ impl From<f64> for opentelemetry::metrics::v1::number_data_point::Value {
     }
 }
 
-fn statistic_set_component(
+/// For numbers that sum up per reporting window
+fn statistic_set_counter_component(
     full_measurement_name: &str,
     unix_nanos: u64,
     start_time_unix_nanos: u64,
@@ -286,8 +291,35 @@ fn statistic_set_component(
     Metric {
         name: format!("{full_measurement_name}_{component}"),
         data: Some(opentelemetry::metrics::v1::metric::Data::Sum(Sum {
-            aggregation_temporality: THE_ONLY_SANE_TEMPORALITY,
-            is_monotonic: false,
+            aggregation_temporality: THE_ACTUAL_TEMPORALITY,
+            // This resets every aggregation interval.
+            // It might not play very nicely with prometheus, but goodmetrics does not limit
+            // to the lowest common monitoring denominator.
+            is_monotonic: true,
+            data_points: vec![new_number_data_point(
+                unix_nanos,
+                start_time_unix_nanos,
+                attributes,
+                value,
+            )],
+        })),
+        description: "".into(),
+        unit: "1".into(),
+    }
+}
+
+/// For numbers that snapshot per reporting window
+fn statistic_set_gauge_component(
+    full_measurement_name: &str,
+    unix_nanos: u64,
+    start_time_unix_nanos: u64,
+    attributes: &[KeyValue],
+    component: &str,
+    value: opentelemetry::metrics::v1::number_data_point::Value,
+) -> opentelemetry::metrics::v1::Metric {
+    Metric {
+        name: format!("{full_measurement_name}_{component}"),
+        data: Some(opentelemetry::metrics::v1::metric::Data::Gauge(Gauge {
             data_points: vec![new_number_data_point(
                 unix_nanos,
                 start_time_unix_nanos,
@@ -361,7 +393,7 @@ fn as_otel_histogram(
     sorted_counts.push(0);
 
     opentelemetry::metrics::v1::Histogram {
-        aggregation_temporality: THE_ONLY_SANE_TEMPORALITY,
+        aggregation_temporality: THE_ACTUAL_TEMPORALITY,
         data_points: vec![HistogramDataPoint {
             attributes,
             start_time_unix_nano: timestamp_nanos - duration.as_nanos() as u64,
@@ -386,7 +418,7 @@ fn as_otel_exponential_histogram(
     let timestamp_nanos = timestamp.nanos_since_epoch();
 
     opentelemetry::metrics::v1::ExponentialHistogram {
-        aggregation_temporality: THE_ONLY_SANE_TEMPORALITY,
+        aggregation_temporality: THE_ACTUAL_TEMPORALITY,
         data_points: vec![ExponentialHistogramDataPoint {
             attributes,
             start_time_unix_nano: timestamp_nanos - duration.as_nanos() as u64,
