@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.goodmetrics";
+option java_outer_classname = "Mtop";
+
+import "goodmetrics.proto";
+
+package mtop;
+
+service Mtop {
+    rpc Subscribe(SubscribeRequest) returns (stream MtopMessage);
+}
+
+message SubscribeRequest {
+}
+
+message MtopMessage {
+    oneof kind {
+        MtopDatum datum = 1;
+        Lagging lagging = 2;
+    }
+}
+
+message MtopDatum {
+    goodmetrics.Datum datum = 1;
+}
+
+message Lagging {
+    uint64 count = 1;
+}
