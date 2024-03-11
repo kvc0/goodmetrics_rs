@@ -2,11 +2,9 @@ use std::{
     collections::HashMap,
     fmt::Display,
     hash::BuildHasher,
-    sync::{atomic::AtomicUsize, Arc},
+    sync::{atomic::AtomicUsize, Arc, Mutex},
     time::Instant,
 };
-
-use futures::channel::oneshot;
 
 use crate::{
     allocator::Hasher,
@@ -53,49 +51,44 @@ pub struct Metrics<TBuildHasher = Hasher> {
 
 #[derive(Debug)]
 pub struct DimensionGuard {
-    override_sender: oneshot::Sender<Dimension>,
+    value: Arc<Mutex<Dimension>>,
 }
 impl DimensionGuard {
     fn new(name: Name, default: Dimension) -> (Self, OverrideDimension) {
-        let (override_sender, override_receiver) = oneshot::channel();
+        let value = Arc::new(Mutex::new(default));
         (
-            Self { override_sender },
-            OverrideDimension {
-                name,
-                default,
-                override_receiver,
+            Self {
+                value: value.clone(),
             },
+            OverrideDimension { name, value },
         )
     }
 
+    /// Track how far you got without a final result
+    pub fn breadcrumb(&self, dimension: impl Into<Dimension>) {
+        *self.value.lock().expect("local mutex") = dimension.into()
+    }
+
+    /// Set the final result of the dimension
     pub fn set(self, dimension: impl Into<Dimension>) {
-        match self.override_sender.send(dimension.into()) {
-            Ok(_) => (),
-            Err(e) => log::debug!("dimension arrived too late: {e:?}"),
-        }
+        *self.value.lock().expect("local mutex") = dimension.into()
     }
 }
 
 #[derive(Debug)]
 pub struct OverrideDimension {
     name: Name,
-    default: Dimension,
-    override_receiver: oneshot::Receiver<Dimension>,
+    value: Arc<Mutex<Dimension>>,
 }
 
 impl OverrideDimension {
     /// Consume the dimension. If it hasn't been set by now, you get the default value.
-    pub fn redeem(mut self) -> (Name, Dimension) {
-        (
-            self.name,
-            match self.override_receiver.try_recv() {
-                Ok(option) => match option {
-                    Some(overriden) => overriden,
-                    None => self.default,
-                },
-                Err(_) => self.default,
-            },
-        )
+    pub fn redeem(self) -> (Name, Dimension) {
+        let dimension = std::mem::replace(
+            &mut *self.value.lock().expect("local mutex"),
+            "__none__".into(),
+        );
+        (self.name, dimension)
     }
 }
 
