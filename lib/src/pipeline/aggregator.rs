@@ -23,12 +23,15 @@ use super::{
 
 /// User-named metrics
 pub type AggregatedMetricsMap = HashMap<Name, DimensionedMeasurementsMap>;
+
 /// A metrics measurement family is grouped first by its dimension position
 pub type DimensionedMeasurementsMap = HashMap<DimensionPosition, MeasurementAggregationMap>;
+
 /// A dimension position is a unique set of dimensions.
 /// If a measurement has (1) the same metric name, (2) the same dimensions and (3) the same measurement name as another measurement,
 /// it is the same measurement and they should be aggregated together.
 pub type DimensionPosition = BTreeMap<Name, Dimension>;
+
 /// Within the dimension position there is a collection of named measurements; we'll store the aggregated view of these
 pub type MeasurementAggregationMap = HashMap<Name, Aggregation>;
 
@@ -133,9 +136,9 @@ where
         mut self,
         cadence: Duration,
         sender: mpsc::Sender<TBatch>,
-        make_batch: TMakeBatchFunction,
+        mut make_batch: TMakeBatchFunction,
     ) where
-        TMakeBatchFunction: Fn(SystemTime, Duration, &mut AggregatedMetricsMap) -> TBatch,
+        TMakeBatchFunction: FnMut(SystemTime, Duration, &mut AggregatedMetricsMap) -> TBatch,
     {
         // Try to align to some even column since the epoch. It helps make metrics better-aligned when systems have well-aligned clocks.
         // It's usually more convenient in grafana this way.
@@ -152,7 +155,7 @@ where
             self.receive_until_next_batch(last_emit, cadence).await;
 
             last_emit = self.now_timer();
-            if let Some(batch) = self.drain_into(self.now_wall_clock(), cadence, &make_batch) {
+            if let Some(batch) = self.drain_into(self.now_wall_clock(), cadence, &mut make_batch) {
                 match sender.try_send(batch) {
                     Ok(_) => {
                         log::info!("sent batch to sink")
@@ -207,10 +210,10 @@ where
         &mut self,
         timestamp: SystemTime,
         duration: Duration,
-        drain_into: &DrainFunction,
+        drain_into: &mut DrainFunction,
     ) -> Option<TReturn>
     where
-        DrainFunction: Fn(SystemTime, Duration, &mut AggregatedMetricsMap) -> TReturn,
+        DrainFunction: FnMut(SystemTime, Duration, &mut AggregatedMetricsMap) -> TReturn,
     {
         if self.map.is_empty() {
             return None;
@@ -454,7 +457,7 @@ mod test {
             .drain_into(
                 SystemTime::now(),
                 Duration::from_secs(1),
-                &|_, _, aggregated| aggregated.drain().collect(),
+                &mut |_, _, aggregated| aggregated.drain().collect(),
             )
             .expect("there should be contents in the batch");
         assert_eq!(

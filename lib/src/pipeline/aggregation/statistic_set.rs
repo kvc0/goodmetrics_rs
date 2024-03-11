@@ -27,4 +27,16 @@ impl StatisticSet {
         self.sum += v;
         self.count += 1;
     }
+
+    /// Reset the aggregation to an empty initial state
+    pub fn zero(&mut self) {
+        self.min = i64::MAX;
+        self.max = i64::MIN;
+        self.sum = 0;
+        self.count = 0;
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
 }

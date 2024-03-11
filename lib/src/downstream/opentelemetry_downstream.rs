@@ -1,6 +1,6 @@
 use std::{
     cmp::Reverse,
-    collections::BinaryHeap,
+    collections::{hash_map::Entry, BinaryHeap},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -117,6 +117,7 @@ where
     }
 }
 
+/// Make batches of Delta temporality. This is recommended.
 pub fn create_preaggregated_opentelemetry_batch(
     timestamp: SystemTime,
     duration: Duration,
@@ -130,6 +131,82 @@ pub fn create_preaggregated_opentelemetry_batch(
         .collect()
 }
 
+pub struct CumulativeTemporalityBatcher {
+    cumulative_map: AggregatedMetricsMap,
+}
+impl CumulativeTemporalityBatcher {
+    pub fn into_cumulative_preaggregated_opentelemetry_batch_fn(mut self) -> impl FnMut(SystemTime, Duration, &mut AggregatedMetricsMap) -> Vec<Metric> {
+        move |timestamp, duration, batch| {
+            let mut this_batch = Vec::new();
+            for (metric_name, dimension_positions) in batch {
+                let cumulative_dimension_positions = self.cumulative_map.entry(metric_name.clone()).or_default();
+
+                for (dimension_position, aggregations) in dimension_positions {
+                    let cumulative_aggregations = cumulative_dimension_positions.entry(dimension_position.clone()).or_default();
+
+                    for (measurement_name, aggregation) in aggregations {
+                        match cumulative_aggregations.entry(measurement_name.clone()) {
+                            Entry::Occupied(cumulative_entry) => {
+                                let cumulative_aggregation = cumulative_entry.get_mut();
+                                if cumulative_aggregation == aggregation {
+                                    if cumulative_aggregation.is_zero() {
+                                        // zero twice. Let's drop it.
+                                        cumulative_entry.remove_entry();
+                                        continue
+                                    } else {
+                                        // Unchanged, so let's reset the cumulative aggregation
+                                        cumulative_aggregation.zero();
+                                    }
+                                }
+                                cumulative_entry.insert(aggregation.clone());
+                            }
+                            Entry::Vacant(no_cumulative_entry) => {
+                                no_cumulative_entry.insert(aggregation.clone());
+                            }
+                        }
+                        this_batch.extend(into_metrics(metric_name.clone(), measurement_name.clone(), aggregation.clone(), timestamp, duration, dimension_position.clone(), AggregationTemporality::Cumulative as i32));
+                    }
+                }
+            }
+            // batch.iter()
+            //     .filter_map(|(metric_name, dimension_positions)| {
+            //         dimension_positions.iter()
+            //             .filter_map(|(dimension_position, metrics)| {
+            //                 let dupes = metrics.iter()
+            //                     .filter_map(|(measurement_name, aggregation)| {
+            //                         self.previous_batch
+            //                             .get(metric_name)
+            //                             .and_then(|positions| positions.get(dimension_position))
+            //                             .and_then(|aggregations| aggregations.get(measurement_name))
+            //                             .map(|aggregation| (metric_name, dimension_position, measurement_name, aggregation))
+            //                     })
+            //                     .peekable();
+            //                 match dupes.peek() {
+            //                     Some(_) => Some(dupes),
+            //                     None => None,
+            //                 }
+            //             })
+            //     });
+            todo!()
+        }
+    }
+}
+
+/// Make batches of Cumulative temporality. This is NOT recommended.
+pub fn create_preaggregated_opentelemetry_batch_cumulative(
+    timestamp: SystemTime,
+    duration: Duration,
+    batch: &mut AggregatedMetricsMap,
+) -> Vec<Metric> {
+    todo!()
+    // batch
+    //     .iter()
+    //     .flat_map(|(name, dimensioned_measurements)| {
+    //         as_metrics(name, timestamp, duration, dimensioned_measurements)
+    //     })
+    //     .collect()
+}
+
 fn as_metrics(
     name: Name,
     timestamp: SystemTime,
@@ -139,51 +216,57 @@ fn as_metrics(
     dimensioned_measurements
         .drain()
         .flat_map(|(dimension_position, mut measurements)| {
-            let otel_dimensions = as_otel_dimensions(dimension_position);
             measurements
                 .drain()
-                .flat_map(|(measurement_name, aggregation)| match aggregation {
-                    Aggregation::ExponentialHistogram(eh) => {
-                        vec![Metric {
-                            name: format!("{name}_{measurement_name}"),
-                            description: "".into(),
-                            unit: "1".into(),
-                            data: Some(
-                                opentelemetry::metrics::v1::metric::Data::ExponentialHistogram(
-                                    as_otel_exponential_histogram(
-                                        eh,
-                                        timestamp,
-                                        duration,
-                                        otel_dimensions.clone(),
-                                    ),
-                                ),
-                            ),
-                        }]
-                    }
-                    Aggregation::Histogram(h) => {
-                        vec![Metric {
-                            name: format!("{name}_{measurement_name}"),
-                            data: Some(opentelemetry::metrics::v1::metric::Data::Histogram(
-                                as_otel_histogram(h, timestamp, duration, otel_dimensions.clone()),
-                            )),
-                            description: "".into(),
-                            unit: "1".into(),
-                        }]
-                    }
-                    Aggregation::StatisticSet(s) => as_otel_statistic_set(
-                        s,
-                        &format!("{name}_{measurement_name}"),
-                        timestamp,
-                        duration,
-                        &otel_dimensions,
-                    ),
-                    Aggregation::TDigest(_) => {
-                        unimplemented!("tdigest for opentelemetry is not implemented")
-                    }
-                })
+                .flat_map(|(measurement_name, aggregation)| into_metrics(name, measurement_name, aggregation, timestamp, duration, dimension_position, THE_ACTUAL_TEMPORALITY))
                 .collect::<Vec<Metric>>()
         })
         .collect()
+}
+
+fn into_metrics(metric_name: Name, measurement_name: Name, aggregation: Aggregation, timestamp: SystemTime, duration: Duration, dimension_position: DimensionPosition, temporality_override: i32) -> Vec<Metric> {
+    let metric_base_name = format!("{metric_name}_{measurement_name}");
+    let otel_dimensions = as_otel_dimensions(dimension_position);
+    match aggregation {
+        Aggregation::ExponentialHistogram(eh) => {
+            vec![Metric {
+                name: metric_base_name,
+                description: "".into(),
+                unit: "1".into(),
+                data: Some(
+                    opentelemetry::metrics::v1::metric::Data::ExponentialHistogram(
+                        as_otel_exponential_histogram(
+                            eh,
+                            timestamp,
+                            duration,
+                            otel_dimensions.clone(),
+                            temporality_override,
+                        ),
+                    ),
+                ),
+            }]
+        }
+        Aggregation::Histogram(h) => {
+            vec![Metric {
+                name: metric_base_name,
+                data: Some(opentelemetry::metrics::v1::metric::Data::Histogram(
+                    as_otel_histogram(h, timestamp, duration, otel_dimensions.clone()),
+                )),
+                description: "".into(),
+                unit: "1".into(),
+            }]
+        }
+        Aggregation::StatisticSet(s) => as_otel_statistic_set(
+            s,
+            &metric_base_name,
+            timestamp,
+            duration,
+            &otel_dimensions,
+        ),
+        Aggregation::TDigest(_) => {
+            unimplemented!("tdigest for opentelemetry is not implemented")
+        }
+    }
 }
 
 fn as_otel_dimensions(dimension_position: DimensionPosition) -> Vec<KeyValue> {
@@ -414,11 +497,12 @@ fn as_otel_exponential_histogram(
     timestamp: SystemTime,
     duration: Duration,
     attributes: Vec<KeyValue>,
+    temporality_override: i32,
 ) -> opentelemetry::metrics::v1::ExponentialHistogram {
     let timestamp_nanos = timestamp.nanos_since_epoch();
 
     opentelemetry::metrics::v1::ExponentialHistogram {
-        aggregation_temporality: THE_ACTUAL_TEMPORALITY,
+        aggregation_temporality: temporality_override,
         data_points: vec![ExponentialHistogramDataPoint {
             attributes,
             start_time_unix_nano: timestamp_nanos - duration.as_nanos() as u64,

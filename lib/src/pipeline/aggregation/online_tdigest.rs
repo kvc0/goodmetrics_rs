@@ -51,6 +51,12 @@ impl OnlineTdigest {
         get_snapshot(&mut state)
     }
 
+    /// Check if this digest holds any observations
+    pub fn is_empty(&self) -> bool {
+        let state = self.state.lock().expect("lock should never fail");
+        state.i == 0 && state.current.is_empty()
+    }
+
     /// Get the current tdigest, merging any outstanding observations.
     pub fn get_mut(&mut self) -> TDigest {
         let state = self

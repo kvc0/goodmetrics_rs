@@ -33,3 +33,26 @@ impl PartialEq for Aggregation {
         }
     }
 }
+
+impl Aggregation {
+    /// Reset the aggregation to an empty initial state
+    pub fn zero(&mut self) {
+        match self {
+            Aggregation::ExponentialHistogram(e) => e.zero(),
+            Aggregation::Histogram(h) => h.clear(),
+            Aggregation::StatisticSet(s) => s.zero(),
+            Aggregation::TDigest(t) => {
+                t.reset_mut();
+            }
+        }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        match self {
+            Aggregation::ExponentialHistogram(e) => e.is_empty(),
+            Aggregation::Histogram(h) => h.is_empty(),
+            Aggregation::StatisticSet(s) => s.is_empty(),
+            Aggregation::TDigest(t) => t.is_empty(),
+        }
+    }
+}

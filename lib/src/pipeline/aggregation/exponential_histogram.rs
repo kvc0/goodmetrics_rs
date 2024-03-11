@@ -9,6 +9,7 @@ use crate::{pipeline::AbsorbDistribution, types::Distribution};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExponentialHistogram {
+    desired_scale: u8,
     actual_scale: u8,
     max_bucket_count: u16,
     bucket_start_offset: u32,
@@ -33,6 +34,7 @@ impl ExponentialHistogram {
     /// max_buckets then scale will be reduced to reflect the data's width.
     pub fn new_with_max_buckets(desired_scale: u8, max_buckets: u16) -> Self {
         Self {
+            desired_scale,
             actual_scale: desired_scale,
             max_bucket_count: max_buckets,
             bucket_start_offset: 0,
@@ -81,6 +83,14 @@ impl ExponentialHistogram {
         buckets[index] += count;
     }
 
+    /// Reset the aggregation to an empty initial state
+    pub fn zero(&mut self) {
+        self.actual_scale = self.desired_scale;
+        self.bucket_start_offset = 0;
+        self.positive_buckets.clear();
+        self.negative_buckets.clear();
+    }
+
     fn zoom_out(&mut self) -> bool {
         if self.actual_scale == 0 {
             return false;
@@ -110,7 +120,7 @@ impl ExponentialHistogram {
         true
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.positive_buckets.is_empty() && self.negative_buckets.is_empty()
     }
 
