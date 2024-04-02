@@ -409,6 +409,9 @@ mod test {
         let mut e = ExponentialHistogram::new(8);
 
         e.accumulate(24_000_000);
+        assert_eq!(6196, e.bucket_start_offset, "histogram initializes with the first observation in the middle of the range");
+        assert_eq_epsilon(23984931.775, e.min(), "min and max should be equal");
+        assert_eq_epsilon(23984931.775, e.max(), "min and max should be equal");
 
         assert_eq!(
             8,
