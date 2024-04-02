@@ -96,13 +96,13 @@ impl ExponentialHistogram {
         // now just reingest
         for (old_index, count) in old_positives.into_iter().enumerate() {
             if 0 < count {
-                let value = lower_boundary(old_scale, old_bucket_start_offset + old_index);
+                let value = lower_boundary(old_scale, old_bucket_start_offset, old_index);
                 self.accumulate_count(value, count)
             }
         }
         for (old_index, count) in old_negatives.into_iter().enumerate() {
             if 0 < count {
-                let value = -lower_boundary(old_scale, old_bucket_start_offset + old_index);
+                let value = -lower_boundary(old_scale, old_bucket_start_offset, old_index);
                 self.accumulate_count(value, count)
             }
         }
@@ -160,7 +160,10 @@ impl ExponentialHistogram {
         self.positive_buckets
             .iter()
             .enumerate()
-            .map(|(index, count)| lower_boundary(self.actual_scale, index) * *count as f64)
+            .map(|(index, count)| {
+                lower_boundary(self.actual_scale, self.bucket_start_offset as usize, index)
+                    * *count as f64
+            })
             .sum()
     }
 
@@ -170,7 +173,9 @@ impl ExponentialHistogram {
             .iter()
             .enumerate()
             .filter(|(_, count)| 0 < **count)
-            .map(|(index, _count)| lower_boundary(self.actual_scale, index))
+            .map(|(index, _count)| {
+                lower_boundary(self.actual_scale, self.bucket_start_offset as usize, index)
+            })
             .next()
             .unwrap_or_default()
     }
@@ -182,7 +187,9 @@ impl ExponentialHistogram {
             .enumerate()
             .rev()
             .filter(|(_, count)| 0 < **count)
-            .map(|(index, _count)| lower_boundary(self.actual_scale, index))
+            .map(|(index, _count)| {
+                lower_boundary(self.actual_scale, self.bucket_start_offset as usize, index)
+            })
             .next()
             .unwrap_or_default()
     }
@@ -213,7 +220,7 @@ impl ExponentialHistogram {
             .enumerate()
             .map(|(index, count)| {
                 (
-                    lower_boundary(self.actual_scale, self.bucket_start_offset as usize + index),
+                    lower_boundary(self.actual_scale, self.bucket_start_offset as usize, index),
                     *count,
                 )
             })
@@ -225,7 +232,8 @@ impl ExponentialHistogram {
                         (
                             lower_boundary(
                                 self.actual_scale,
-                                self.bucket_start_offset as usize + index,
+                                self.bucket_start_offset as usize,
+                                index,
                             ),
                             *count,
                         )
@@ -260,9 +268,9 @@ fn map_value_to_scale_index(scale: impl Into<i32>, raw_value: impl Into<f64>) ->
 ///   > The positive and negative ranges of the histogram are expressed separately. Negative values are mapped by
 ///   > their absolute value into the negative range using the same scale as the positive range. Note that in the
 ///   > negative range, therefore, histogram buckets use lower-inclusive boundaries.
-fn lower_boundary(scale: impl Into<i32>, index: usize) -> f64 {
+fn lower_boundary(scale: impl Into<i32>, offset: usize, index: usize) -> f64 {
     let inverse_scale_factor = LN_2 * 2_f64.powi(-scale.into());
-    (index as f64 * inverse_scale_factor).exp()
+    ((offset + index) as f64 * inverse_scale_factor).exp()
 }
 
 impl AbsorbDistribution for ExponentialHistogram {
@@ -428,12 +436,12 @@ mod test {
 
         assert_eq_epsilon(
             19313750.368,
-            lower_boundary(8, 6196),
+            lower_boundary(8, 0, 6196),
             "lower boundary of histogram",
         );
         assert_eq_epsilon(
             29785874.896,
-            lower_boundary(8, 6196 + 160),
+            lower_boundary(8, 0, 6196 + 160),
             "upper boundary of histogram",
         );
 
@@ -487,7 +495,7 @@ mod test {
         );
         assert_eq_epsilon(
             29705335.561,
-            lower_boundary(8, 6195 + 160),
+            lower_boundary(8, 0, 6195 + 160),
             "new upper boundary of histogram",
         );
 
@@ -522,17 +530,17 @@ mod test {
         let recursive_scale_start_count = e.count();
         assert_eq!(
             2199023255551.996,
-            lower_boundary(2, 164),
+            lower_boundary(2, 0, 164),
             "this value gets us down into scale 2"
         );
         assert_eq_epsilon(
             4.000,
-            lower_boundary(2, 8),
+            lower_boundary(2, 0, 8),
             "this value gets us down into scale 2",
         );
         assert_eq_epsilon(
             4.757,
-            lower_boundary(2, 9),
+            lower_boundary(2, 0, 9),
             "this value gets us down into scale 2",
         );
         // pin the bucket's low value, at scale 2's index 8. It's not in scale 2 yet though!
@@ -587,12 +595,20 @@ mod test {
         expected_lower_boundary: impl Into<f64>,
     ) {
         let observed_index = map_value_to_scale_index(e.scale(), value.into());
-        let observed_boundary = lower_boundary(e.scale(), observed_index);
+        let observed_boundary = lower_boundary(e.scale(), 0, observed_index);
         assert_eq_epsilon(
             expected_lower_boundary.into(),
             observed_boundary,
             "boundary matches",
         );
+        if 0 < observed_index {
+            let observed_offset_boundary = lower_boundary(e.scale(), 1, observed_index - 1);
+            assert_eq_epsilon(
+                observed_boundary,
+                observed_offset_boundary,
+                "offset must result in the same boundary",
+            );
+        }
     }
 
     #[track_caller]
