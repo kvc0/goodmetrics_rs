@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 #[allow(clippy::unwrap_used)]
 fn main() {
-    let out_dir = PathBuf::from("../lib/src/proto");
+    let out_dir = PathBuf::from("../goodmetrics/src/proto");
     let proto_dir = "../proto";
 
     eprintln!("Hi brave developer! If you are changing protos and goodmetrics fails to build, please retry 1 time.");

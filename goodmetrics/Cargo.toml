@@ -1,0 +1,59 @@
+[package]
+name = "goodmetrics"
+version = "3.4.2"
+edition = "2021"
+description = "Unlimited cardinality, fast metrics recording - for services"
+license = "Apache-2.0"
+authors = ["kvc0"]
+readme = "../README.md"
+repository = "https://github.com/kvc0/goodmetrics_rs"
+keywords = ["metrics", "goodmetrics", "service", "performance"]
+categories = ["web-programming", "development-tools::profiling"]
+
+[features]
+ahash-hasher = ["ahash"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lib]
+bench = false
+
+[[bench]]
+name = "bench"
+harness = false
+
+[[bench]]
+name = "lightstep"
+harness = false
+
+[[bench]]
+name = "goodmetrics"
+harness = false
+
+[dependencies]
+ahash                           = { workspace = true, optional = true }
+bytes                           = { workspace = true }
+futures                         = { workspace = true }
+futures-batch                   = { workspace = true }
+http-body                       = { workspace = true }
+hyper                           = { workspace = true }
+hyper-rustls                    = { workspace = true }
+log                             = { workspace = true }
+object-pool                     = { workspace = true }
+ordered-float                   = { workspace = true }
+prost                           = { workspace = true }
+tokio                           = { workspace = true }
+tokio-rustls                    = { workspace = true }
+tonic                           = { workspace = true }
+tower                           = { workspace = true }
+
+[dev-dependencies]
+criterion                       = { workspace = true }
+env_logger                      = { workspace = true }
+rand                            = { workspace = true }
+test-log                        = { workspace = true }
+tokio                           = { workspace = true, features = ["rt-multi-thread"]}
+tokio-test                      = { workspace = true }
+webpki-roots                    = { workspace = true }
