@@ -3,7 +3,31 @@
 resolver = "2"
 
 members = [
+    "goodmetrics",
     "proto_generator",
-    "lib",
 ]
+
+[workspace.dependencies]
+ahash                           = { version = "0.8" }
+bytes                           = { version = "1.5" }
+criterion                       = { version = "0.5" }
+env_logger                      = { version = "0.11" }
+futures                         = { version = "0.3" }
+futures-batch                   = { version = "0.6" }
+http-body                       = { version = "0.4" }
+hyper                           = { version = "0.14" }
+hyper-rustls                    = { version = "0.24", features = ["http2"] }
+log                             = { version = "0.4" }
+object-pool                     = { version = "0.5" }
+ordered-float                   = { version = "4.1" }
+prost                           = { version = "0.12" }
+rand                            = { version = "0.8" }
+test-log                        = { version = "0.2" }
+tokio                           = { version = "1.33" }
+tokio-rustls                    = { version = "0.24", features = ["dangerous_configuration"] }
+tokio-test                      = { version = "0.4" }
+tonic                           = { version = "0.11", features = ["tls"] }
+tonic-build                     = { version = "0.11", features = [] }
+tower                           = { version = "0.4" }
+webpki-roots                    = { version = "0" }
 

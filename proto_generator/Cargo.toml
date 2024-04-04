@@ -12,4 +12,4 @@ publish = false
 bench = false
 
 [build-dependencies]
-tonic-build = { version = "0.8", features = [] }
+tonic-build                     = { workspace = true, features = [] }
