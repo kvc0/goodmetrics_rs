@@ -8,12 +8,7 @@ use hyper::{header::HeaderName, http::HeaderValue};
 
 use goodmetrics::types::{Dimension, Name};
 use goodmetrics::{
-    downstream::{
-        channel_connection::get_channel,
-        opentelemetry_downstream::{
-            create_preaggregated_opentelemetry_batch, OpenTelemetryDownstream,
-        },
-    },
+    downstream::{create_preaggregated_opentelemetry_batch, get_channel, OpenTelemetryDownstream},
     metrics_factory::{MetricsFactory, RecordingScope},
     pipeline::aggregator::{Aggregator, DistributionMode},
 };

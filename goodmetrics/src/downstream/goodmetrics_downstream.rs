@@ -36,6 +36,7 @@ where
     TChannel::ResponseBody: http_body::Body<Data = bytes::Bytes> + Send + 'static,
     <TChannel::ResponseBody as http_body::Body>::Error: Into<StdError> + Send,
 {
+    /// Create a new goodmetrics sender from a grpc channel
     pub fn new(
         channel: TChannel,
         shared_dimensions: impl IntoIterator<Item = (impl Into<String>, impl Into<Dimension>)>,
@@ -51,6 +52,7 @@ where
         }
     }
 
+    /// Spawn this on a tokio runtime to send your metrics to your downstream receiver
     pub async fn send_batches_forever(mut self, mut receiver: mpsc::Receiver<Vec<Datum>>) {
         let mut interval = tokio::time::interval(Duration::from_millis(500));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -84,6 +86,7 @@ where
     }
 }
 
+/// The default mapping from in-memory representation to goodmetrics wire representation
 pub fn create_preaggregated_goodmetrics_batch(
     timestamp: SystemTime,
     duration: Duration,

@@ -19,6 +19,7 @@
 //!
 #[deny(missing_docs)]
 pub mod allocator;
+#[deny(missing_docs)]
 pub mod downstream;
 pub mod gauge;
 pub mod gauge_group;

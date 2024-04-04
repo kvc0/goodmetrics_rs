@@ -62,6 +62,7 @@ where
     TChannel::ResponseBody: http_body::Body<Data = bytes::Bytes> + Send + 'static,
     <TChannel::ResponseBody as http_body::Body>::Error: Into<StdError> + Send,
 {
+    /// Create a new opentelemetry metrics sender from a grpc channel
     pub fn new(channel: TChannel, shared_dimensions: Option<DimensionPosition>) -> Self {
         let client: MetricsServiceClient<TChannel> = MetricsServiceClient::new(channel);
 
@@ -71,6 +72,7 @@ where
         }
     }
 
+    /// Spawn this on a tokio runtime to send your metrics to your downstream receiver
     pub async fn send_batches_forever(mut self, mut receiver: mpsc::Receiver<Vec<Metric>>) {
         let mut interval = tokio::time::interval(Duration::from_millis(500));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -117,6 +119,7 @@ where
     }
 }
 
+/// The default mapping from in-memory representation to opentelemetry metrics wire representation
 pub fn create_preaggregated_opentelemetry_batch(
     timestamp: SystemTime,
     duration: Duration,

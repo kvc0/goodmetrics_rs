@@ -12,6 +12,7 @@ use tower::{buffer::Buffer, util::BoxService, ServiceExt};
 
 use super::StdError;
 
+/// Type alias for internal channel type
 pub type ChannelType =
     Buffer<BoxService<Request<BoxBody>, Response<Body>, Error>, Request<BoxBody>>;
 

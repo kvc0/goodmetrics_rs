@@ -1,12 +1,22 @@
+//! Types related to emitting metrics to collectors
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub mod channel_connection;
-pub mod goodmetrics_downstream;
-pub mod opentelemetry_downstream;
+mod channel_connection;
+mod goodmetrics_downstream;
+mod opentelemetry_downstream;
 
-pub type StdError = Box<dyn std::error::Error + Send + Sync + 'static>;
+pub use channel_connection::{get_channel, ChannelType};
+pub use goodmetrics_downstream::{create_preaggregated_goodmetrics_batch, GoodmetricsDownstream};
+pub use opentelemetry_downstream::{
+    create_preaggregated_opentelemetry_batch, OpenTelemetryDownstream,
+};
 
+pub(crate) type StdError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+/// A provider of unix epoch nanos
 pub trait EpochTime {
+    /// return nanos since the unix epoch
     fn nanos_since_epoch(&self) -> u64;
 }
 
