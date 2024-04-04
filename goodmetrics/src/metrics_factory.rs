@@ -8,10 +8,7 @@ use tokio::{sync::mpsc, time::MissedTickBehavior};
 
 use crate::gauge::GaugeDimensions;
 use crate::{
-    allocator::{
-        returning_reference::{ReturnTarget, ReturningRef},
-        MetricsAllocator, MetricsRef,
-    },
+    allocator::{MetricsAllocator, MetricsRef, ReturnTarget, ReturningRef},
     gauge::StatisticSetGauge,
     gauge_group::GaugeGroup,
     metrics::MetricsBehavior,
@@ -24,7 +21,7 @@ use crate::{
 /// ```
 /// # let runtime = tokio::runtime::Builder::new_current_thread().build().expect("runtime can be built");
 /// # runtime.block_on(async {
-/// use goodmetrics::allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator;
+/// use goodmetrics::allocator::AlwaysNewMetricsAllocator;
 /// use goodmetrics::downstream::goodmetrics_downstream::create_preaggregated_goodmetrics_batch;
 /// use goodmetrics::downstream::goodmetrics_downstream::GoodmetricsDownstream;
 /// use goodmetrics::metrics::Metrics;
@@ -327,10 +324,7 @@ mod test {
     use crate::pipeline::Sink;
     use crate::types::{Dimension, Name};
     use crate::{
-        allocator::{
-            always_new_metrics_allocator::AlwaysNewMetricsAllocator,
-            arc_allocator::{ArcAllocator, CachedMetrics},
-        },
+        allocator::{AlwaysNewMetricsAllocator, ArcAllocator, CachedMetrics},
         metrics::{Metrics, MetricsBehavior},
         metrics_factory::RecordingScope,
         pipeline::{

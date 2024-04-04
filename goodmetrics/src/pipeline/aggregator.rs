@@ -383,7 +383,7 @@ mod test {
     };
 
     use crate::{
-        allocator::{always_new_metrics_allocator::AlwaysNewMetricsAllocator, MetricsAllocator},
+        allocator::{AlwaysNewMetricsAllocator, MetricsAllocator},
         metrics::Metrics,
         pipeline::aggregator::{Aggregation, Aggregator, DistributionMode, StatisticSet},
         types::{Dimension, Name, Observation},

@@ -4,7 +4,7 @@ use criterion::Criterion;
 use hyper::{header::HeaderName, http::HeaderValue};
 
 use goodmetrics::{
-    allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator,
+    allocator::AlwaysNewMetricsAllocator,
     downstream::{
         channel_connection::get_channel,
         goodmetrics_downstream::{create_preaggregated_goodmetrics_batch, GoodmetricsDownstream},

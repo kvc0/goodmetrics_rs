@@ -5,8 +5,8 @@ use std::{
 
 use criterion::Criterion;
 use goodmetrics::{
-    allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator, metrics::Metrics,
-    metrics_factory::MetricsFactory, pipeline::Sink,
+    allocator::AlwaysNewMetricsAllocator, metrics::Metrics, metrics_factory::MetricsFactory,
+    pipeline::Sink,
 };
 
 struct DropSink;

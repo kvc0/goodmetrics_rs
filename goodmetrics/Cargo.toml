@@ -11,7 +11,7 @@ keywords = ["metrics", "goodmetrics", "service", "performance"]
 categories = ["web-programming", "development-tools::profiling"]
 
 [features]
-ahash-hasher = ["ahash"]
+ahash-hasher    = ["ahash"]
 
 [package.metadata.docs.rs]
 all-features = true

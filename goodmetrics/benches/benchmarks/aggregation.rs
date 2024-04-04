@@ -5,7 +5,7 @@ use std::{
 
 use criterion::{measurement::WallTime, BenchmarkGroup, Criterion};
 use goodmetrics::{
-    allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator,
+    allocator::AlwaysNewMetricsAllocator,
     downstream::opentelemetry_downstream::create_preaggregated_opentelemetry_batch,
     metrics_factory::{MetricsFactory, RecordingScope},
     pipeline::{

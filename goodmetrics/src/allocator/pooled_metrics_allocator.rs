@@ -9,6 +9,7 @@ use crate::{
 
 use super::{Hasher, MetricsAllocator};
 
+/// A metrics allocator which uses an object pool for Metrics instances.
 pub struct PooledMetricsAllocator<TBuildHasher = Hasher> {
     pool: Pool<Metrics<TBuildHasher>>,
     size: usize,
@@ -21,6 +22,7 @@ impl<TBuildHasher: BuildHasher + Default> Clone for PooledMetricsAllocator<TBuil
 }
 
 impl<T: BuildHasher + Default> PooledMetricsAllocator<T> {
+    /// Create a new PooledMetricsAllocator with a size hint
     pub fn new(size: usize) -> Self {
         Self {
             pool: Pool::new(size, Self::instantiate_metrics),

@@ -8,16 +8,12 @@ use crate::{
 use super::MetricsAllocator;
 
 /// Allocator which always creates a new instance.
-/// Probably you will want PooledMetricsAllocator if you are doing
-/// something with very tight timing constraints.
+/// You may want a pooled or arc allocator if you are doing
+/// something with very tight timing constraints. You should
+/// benchmark your application to be sure though. This is the
+/// simplest way to use goodmetrics.
 #[derive(Clone, Default)]
 pub struct AlwaysNewMetricsAllocator;
-
-impl AlwaysNewMetricsAllocator {
-    pub fn new() -> Self {
-        Self
-    }
-}
 
 impl<'a, TBuildHasher> MetricsAllocator<'a, Metrics<TBuildHasher>> for AlwaysNewMetricsAllocator
 where

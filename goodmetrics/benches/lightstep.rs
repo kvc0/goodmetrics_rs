@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use criterion::Criterion;
-use goodmetrics::allocator::always_new_metrics_allocator::AlwaysNewMetricsAllocator;
+use goodmetrics::allocator::AlwaysNewMetricsAllocator;
 use goodmetrics::pipeline::stream_sink::StreamSink;
 use hyper::{header::HeaderName, http::HeaderValue};
 

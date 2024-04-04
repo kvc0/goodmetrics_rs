@@ -17,7 +17,7 @@
 //!
 //! # Feature Flags
 //!
-
+#[deny(missing_docs)]
 pub mod allocator;
 pub mod downstream;
 pub mod gauge;

@@ -40,6 +40,7 @@ impl<TBuildHasher> ArcAllocator<TBuildHasher>
 where
     TBuildHasher: BuildHasher + Default + Send + 'static,
 {
+    /// Create a new ArcAllocator with a size hint
     pub fn new(cache_size: usize) -> Self {
         Self {
             state: Arc::new(AllocatorState {
@@ -109,6 +110,7 @@ where
     }
 }
 
+/// A Metrics reference that caches instances via an Arc to the original allocator's state
 pub struct CachedMetrics<TBuildHasher = Hasher>
 where
     TBuildHasher: BuildHasher + Default + Send + 'static,

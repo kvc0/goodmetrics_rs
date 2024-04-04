@@ -4,10 +4,12 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+/// A place to which a thing is returned. This is used to cache metrics objects.
 pub trait ReturnTarget<'a, TRef>
 where
     TRef: 'a,
 {
+    /// Return a previously vended `TRef` to the referand.
     fn return_referent(&'a self, to_return: TRef);
 }
 
@@ -43,7 +45,7 @@ where
 
 impl<'a, TRef, TReturnTarget: ReturnTarget<'a, TRef>> ReturningRef<'a, TRef, TReturnTarget> {
     #[inline]
-    pub fn new(return_target: &'a TReturnTarget, referent: TRef) -> Self {
+    pub(crate) fn new(return_target: &'a TReturnTarget, referent: TRef) -> Self {
         Self {
             return_target,
             referent: ManuallyDrop::new(referent),
