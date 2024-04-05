@@ -11,10 +11,14 @@ use crate::{
     types::{Dimension, Distribution, Measurement, Name, Observation},
 };
 
+/// Behavior customization for advanced use of metrics
 #[derive(Clone, Copy, Debug)]
 pub enum MetricsBehavior {
+    /// Totaltime is recorded, metrics are emitted.
     Default = 0x00000000,
+    /// Totaltime is not recorded, metrics are emitted.
     SuppressTotalTime = 0x00000001,
+    /// Metrics are not emitted.
     Suppress = 0x00000010,
 }
 
@@ -49,6 +53,8 @@ pub struct Metrics<TBuildHasher = Hasher> {
     pub(crate) behaviors: u32,
 }
 
+/// A drop guard for a dimension, so you can know what happened, e.g., in an async
+/// workflow that timed out & dropped.
 #[derive(Debug)]
 pub struct DimensionGuard {
     value: Arc<Mutex<Dimension>>,
@@ -76,7 +82,7 @@ impl DimensionGuard {
 }
 
 #[derive(Debug)]
-pub struct OverrideDimension {
+pub(crate) struct OverrideDimension {
     name: Name,
     value: Arc<Mutex<Dimension>>,
 }
@@ -226,7 +232,7 @@ where
     /// You should be getting Metrics instances from a MetricsFactory, which will
     /// be set up to send your recordings to wherever they're supposed to go.
     #[inline]
-    pub fn new(
+    pub(crate) fn new(
         name: impl Into<Name>,
         start_time: Instant,
         dimensions: HashMap<Name, Dimension, TBuildHasher>,
@@ -278,7 +284,7 @@ impl Drop for Timer {
 }
 
 impl Timer {
-    pub fn new(timer: Arc<AtomicUsize>) -> Self {
+    pub(crate) fn new(timer: Arc<AtomicUsize>) -> Self {
         Self {
             start_time: Instant::now(),
             timer,

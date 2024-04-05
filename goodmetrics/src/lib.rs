@@ -24,12 +24,19 @@ pub mod aggregation;
 pub mod allocator;
 #[deny(missing_docs)]
 pub mod downstream;
-pub mod gauge;
-pub mod gauge_group;
-pub mod metrics;
+#[deny(missing_docs)]
+mod gauge;
+#[deny(missing_docs)]
+mod gauge_group;
+#[deny(missing_docs)]
+mod metrics;
 pub mod metrics_factory;
 pub mod pipeline;
 pub mod types;
+
+pub use gauge::{GaugeDimensions, StatisticSetGauge};
+pub use gauge_group::GaugeGroup;
+pub use metrics::{DimensionGuard, Metrics, MetricsBehavior, Timer};
 
 /// Internal generated types - ideally you shouldn't need to do much with them.
 /// Nevertheless, they are exported in case you need them.

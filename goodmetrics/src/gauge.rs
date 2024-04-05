@@ -29,7 +29,7 @@ pub struct StatisticSetGauge {
 
 const ORDERING: std::sync::atomic::Ordering = std::sync::atomic::Ordering::Relaxed;
 
-pub fn statistic_set_gauge() -> StatisticSetGauge {
+pub(crate) fn statistic_set_gauge() -> StatisticSetGauge {
     StatisticSetGauge {
         count: AtomicU64::new(0),
         sum: AtomicI64::new(0),
@@ -62,6 +62,9 @@ impl StatisticSetGauge {
 }
 
 impl StatisticSetGauge {
+    /// Takes a dirty snapshot of the gauge without locking.
+    /// This is susceptible to toctou, and the intent is to only have 1 thread
+    /// calling reset() as part of metrics reporting.
     pub fn reset(&self) -> Option<StatisticSet> {
         let count = self.count.fetch_add(0, ORDERING);
         if count == 0 {

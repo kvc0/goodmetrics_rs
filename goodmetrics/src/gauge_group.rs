@@ -11,18 +11,15 @@ use crate::{
     types::Name,
 };
 
+/// Gauges grouped by a shared dimension position
 #[derive(Default)]
 pub struct GaugeGroup {
     dimensioned_gauges: HashMap<DimensionPosition, HashMap<Name, Weak<StatisticSetGauge>>>,
 }
 
 impl GaugeGroup {
-    /// Create or retrieve a gauge.
-    pub fn gauge(&mut self, name: impl Into<Name>) -> Arc<StatisticSetGauge> {
-        self.dimensioned_gauge(name, Default::default())
-    }
-
-    pub fn dimensioned_gauge(
+    /// Put get a shared gauge reference
+    pub(crate) fn dimensioned_gauge(
         &mut self,
         name: impl Into<Name>,
         dimensions: DimensionPosition,
