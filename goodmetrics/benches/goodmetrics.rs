@@ -6,11 +6,11 @@ use hyper::{header::HeaderName, http::HeaderValue};
 use goodmetrics::{
     allocator::AlwaysNewMetricsAllocator,
     downstream::{create_preaggregated_goodmetrics_batch, get_channel, GoodmetricsDownstream},
-    metrics_factory::{MetricsFactory, RecordingScope},
     pipeline::{
         aggregator::{Aggregator, DistributionMode},
         stream_sink::StreamSink,
     },
+    MetricsFactory, RecordingScope,
 };
 use tokio::{join, sync::mpsc};
 

@@ -7,11 +7,11 @@ use criterion::{measurement::WallTime, BenchmarkGroup, Criterion};
 use goodmetrics::{
     allocator::AlwaysNewMetricsAllocator,
     downstream::create_preaggregated_opentelemetry_batch,
-    metrics_factory::{MetricsFactory, RecordingScope},
     pipeline::{
         aggregator::{Aggregator, DistributionMode},
         stream_sink::StreamSink,
     },
+    MetricsFactory, RecordingScope,
 };
 use tokio::sync::mpsc;
 

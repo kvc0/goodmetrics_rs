@@ -9,8 +9,8 @@ use hyper::{header::HeaderName, http::HeaderValue};
 use goodmetrics::types::{Dimension, Name};
 use goodmetrics::{
     downstream::{create_preaggregated_opentelemetry_batch, get_channel, OpenTelemetryDownstream},
-    metrics_factory::{MetricsFactory, RecordingScope},
     pipeline::aggregator::{Aggregator, DistributionMode},
+    MetricsFactory, RecordingScope,
 };
 use tokio::join;
 use tokio::sync::mpsc;

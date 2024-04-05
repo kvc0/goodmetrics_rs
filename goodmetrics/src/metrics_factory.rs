@@ -94,6 +94,7 @@ where
     }
 }
 
+/// MetricsFactory recording behaviors
 pub trait RecordingScope<'a, TMetricsRef: 'a>: ReturnTarget<'a, TMetricsRef>
 where
     Self: Sized,
@@ -108,6 +109,7 @@ where
         behavior: MetricsBehavior,
     ) -> ReturningRef<'a, TMetricsRef, Self>;
 
+    /// Called with the metrics ref that was vended via record_scope
     fn emit(&self, metrics: TMetricsRef);
 
     /// # Safety
@@ -269,6 +271,7 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
 }
 
 impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
+    /// Disable all metrics vended by this factory
     pub fn disable(&mut self) {
         self.disabled = true
     }
@@ -278,16 +281,19 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink>
 where
     TMetricsAllocator: Default,
 {
+    /// Create a metrics factory that forwards complete metrics to sink
     pub fn new(sink: TSink) -> Self {
         MetricsFactory::new_with_behaviors(sink, &[MetricsBehavior::Default])
     }
 
+    /// Create a metrics factory with custom behaviors that forwards complete metrics to sink
     pub fn new_with_behaviors(sink: TSink, behaviors: &[MetricsBehavior]) -> Self {
         MetricsFactory::new_with_allocator(sink, behaviors, Default::default())
     }
 }
 
 impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
+    /// Create a metrics factory with custom behaviors and an explicit allocator that forwards complete metrics to sink
     pub fn new_with_allocator(
         sink: TSink,
         behaviors: &[MetricsBehavior],

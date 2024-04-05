@@ -4,9 +4,7 @@ use std::{
 };
 
 use criterion::Criterion;
-use goodmetrics::{
-    allocator::AlwaysNewMetricsAllocator, metrics_factory::MetricsFactory, pipeline::Sink, Metrics,
-};
+use goodmetrics::{allocator::AlwaysNewMetricsAllocator, pipeline::Sink, Metrics, MetricsFactory};
 
 struct DropSink;
 impl Sink<Metrics> for DropSink {
