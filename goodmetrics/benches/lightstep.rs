@@ -3,13 +3,13 @@ use std::time::Duration;
 
 use criterion::Criterion;
 use goodmetrics::allocator::AlwaysNewMetricsAllocator;
-use goodmetrics::pipeline::stream_sink::StreamSink;
+use goodmetrics::pipeline::StreamSink;
 use hyper::{header::HeaderName, http::HeaderValue};
 
 use goodmetrics::types::{Dimension, Name};
 use goodmetrics::{
     downstream::{create_preaggregated_opentelemetry_batch, get_channel, OpenTelemetryDownstream},
-    pipeline::aggregator::{Aggregator, DistributionMode},
+    pipeline::{Aggregator, DistributionMode},
     MetricsFactory, RecordingScope,
 };
 use tokio::join;

@@ -8,12 +8,14 @@ mod statistic_set;
 #[allow(clippy::unwrap_used, unused)]
 mod tdigest;
 
-pub(crate) use bucket::{bucket_10_2_sigfigs, bucket_10_below_2_sigfigs};
+pub(crate) use bucket::bucket_10_below_2_sigfigs;
 pub use exponential_histogram::ExponentialHistogram;
 pub use histogram::Histogram;
 pub use online_tdigest::OnlineTdigest;
 pub use statistic_set::StatisticSet;
 pub use tdigest::{Centroid, TDigest};
+
+use crate::types::Distribution;
 
 // This will need to be reduced. I'm planning to add object pool references
 // here; after which this won't be an issue anymore.
@@ -39,5 +41,56 @@ impl PartialEq for Aggregation {
             (Self::StatisticSet(l), Self::StatisticSet(r)) => l == r,
             _ => false,
         }
+    }
+}
+
+/// Ability to accept Distributions into a structure
+pub trait AbsorbDistribution {
+    /// Absorb each value of a distribution into a structure
+    fn absorb(&mut self, distribution: Distribution);
+}
+
+impl AbsorbDistribution for Histogram {
+    fn absorb(&mut self, distribution: Distribution) {
+        match distribution {
+            Distribution::I64(i) => {
+                self.accumulate(i);
+            }
+            Distribution::I32(i) => {
+                self.accumulate(i);
+            }
+            Distribution::U64(i) => {
+                self.accumulate(i as i64);
+            }
+            Distribution::U32(i) => {
+                self.accumulate(i);
+            }
+            Distribution::Collection(collection) => {
+                collection.iter().for_each(|i| {
+                    self.accumulate(*i);
+                });
+            }
+            Distribution::Timer { nanos } => {
+                let v = nanos.load(std::sync::atomic::Ordering::Acquire);
+                self.accumulate(v as i64);
+            }
+        };
+    }
+}
+
+impl AbsorbDistribution for OnlineTdigest {
+    fn absorb(&mut self, distribution: Distribution) {
+        match distribution {
+            Distribution::I64(i) => self.observe_mut(i as f64),
+            Distribution::I32(i) => self.observe_mut(i),
+            Distribution::U64(i) => self.observe_mut(i as f64),
+            Distribution::U32(i) => self.observe_mut(i),
+            Distribution::Collection(collection) => {
+                collection.iter().for_each(|i| self.observe_mut(*i as f64));
+            }
+            Distribution::Timer { nanos } => {
+                self.observe_mut(nanos.load(std::sync::atomic::Ordering::Acquire) as f64)
+            }
+        };
     }
 }

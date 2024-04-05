@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 use crate::proto::opentelemetry::{metrics::v1::Gauge, resource::v1::Resource};
 use crate::{
     aggregation::{bucket_10_below_2_sigfigs, Aggregation, StatisticSet},
-    pipeline::aggregator::{DimensionPosition, DimensionedMeasurementsMap},
+    pipeline::{DimensionPosition, DimensionedMeasurementsMap},
     proto::opentelemetry::{
         self,
         collector::metrics::v1::{
@@ -25,7 +25,7 @@ use crate::{
 };
 use crate::{
     aggregation::{ExponentialHistogram, Histogram},
-    pipeline::aggregator::AggregatedMetricsMap,
+    pipeline::AggregatedMetricsMap,
     proto::opentelemetry::metrics::v1::{
         exponential_histogram_data_point::Buckets, ExponentialHistogramDataPoint,
     },
@@ -467,10 +467,7 @@ mod test {
             },
         },
         metrics::Metrics,
-        pipeline::{
-            aggregator::{Aggregator, DistributionMode},
-            stream_sink::StreamSink,
-        },
+        pipeline::{Aggregator, DistributionMode, StreamSink},
     };
 
     #[test_log::test(tokio::test)]

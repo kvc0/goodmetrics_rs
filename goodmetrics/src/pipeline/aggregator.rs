@@ -13,9 +13,8 @@ use crate::{
     types::{self, Dimension, Measurement, Name},
 };
 
-use crate::{
-    aggregation::{Aggregation, ExponentialHistogram, Histogram, OnlineTdigest, StatisticSet},
-    pipeline::AbsorbDistribution,
+use crate::aggregation::{
+    AbsorbDistribution, Aggregation, ExponentialHistogram, Histogram, OnlineTdigest, StatisticSet,
 };
 
 /// User-named metrics
@@ -29,10 +28,21 @@ pub type DimensionPosition = BTreeMap<Name, Dimension>;
 /// Within the dimension position there is a collection of named measurements; we'll store the aggregated view of these
 pub type MeasurementAggregationMap = HashMap<Name, Aggregation>;
 
+/// Strategies for recording the distribution of observations within each reporting window.
 #[derive(Debug, Clone, Copy)]
 pub enum DistributionMode {
     /// Follows the opentelemetry standard for histogram buckets.
-    ExponentialHistogram { max_buckets: u16, desired_scale: u8 },
+    ExponentialHistogram {
+        /// Maximum number of buckets to be used for representing the histogram.
+        /// This limits fidelity. 160 is the canonically chosen value here, but
+        /// smaller values are also reasonable.
+        max_buckets: u16,
+        /// Desired scale of fidelity. This is defined by the opentelemetry
+        /// exponential histogram format. You should probably just put 8 here
+        /// and allow the exponential histogram implementation auto-scale-down
+        /// if your values have too much spread.
+        desired_scale: u8,
+    },
     /// Less space-efficient, less performant, but easy to understand.
     Histogram,
     /// Fancy sparse sketch distributions. Currently only compatible with
@@ -54,16 +64,19 @@ impl Display for DistributionMode {
     }
 }
 
-pub type SleepFunction = dyn Fn(Duration) + Send + Sync;
-
 /// Primarily for testing and getting really deep into some stuff, here's
 /// a way to customize how you group aggregates over time.
 pub enum TimeSource {
+    /// The default time source.
     SystemTime,
+    /// You can customize time.
     DynamicTime {
+        /// Return "now" as a SystemTime
         now_wall_clock: Box<dyn Fn() -> SystemTime + Send + Sync>,
+        /// Return "now" as a performance counter, like Instant::now
         now_timer: Box<dyn Fn() -> Instant + Send + Sync>,
-        sleep: Box<SleepFunction>,
+        /// Sleep for the duration
+        sleep: Box<dyn Fn(Duration) + Send + Sync>,
     },
 }
 impl std::fmt::Debug for TimeSource {
@@ -80,6 +93,7 @@ impl Default for TimeSource {
     }
 }
 
+/// Aggregates metrics and presents a pollable interface for creating batches of metrics.
 pub struct Aggregator<TMetricsRef> {
     metrics_queue: std::sync::mpsc::Receiver<TMetricsRef>,
     map: AggregatedMetricsMap,
@@ -95,6 +109,8 @@ impl<TMetricsRef> Aggregator<TMetricsRef>
 where
     TMetricsRef: MetricsRef + Send + 'static,
 {
+    /// Create a new aggregator that pulls from a metrics receiver.
+    /// Distribution mode customizes how this aggregator will store concrete distributions in memory.
     pub fn new(
         metrics_queue: std::sync::mpsc::Receiver<TMetricsRef>,
         distribution_mode: DistributionMode,
@@ -109,6 +125,8 @@ where
         }
     }
 
+    /// Create a new aggregator with an explicit time source. This is mostly for testing.
+    #[doc(hidden)]
     pub fn new_with_time_source(
         metrics_queue: std::sync::mpsc::Receiver<TMetricsRef>,
         distribution_mode: DistributionMode,

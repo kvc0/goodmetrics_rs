@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use super::Sink;
 
+/// A metrics sink that just logs metrics and drops them
 pub struct LoggingSink {
     log_level: log::Level,
 }

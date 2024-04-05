@@ -32,6 +32,7 @@ mod gauge_group;
 mod metrics;
 #[deny(missing_docs)]
 mod metrics_factory;
+#[deny(missing_docs)]
 pub mod pipeline;
 pub mod types;
 

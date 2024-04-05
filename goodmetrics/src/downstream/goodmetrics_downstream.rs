@@ -7,12 +7,10 @@ use tokio::sync::mpsc;
 
 use crate::{
     aggregation::{
-        Aggregation, Centroid, ExponentialHistogram, Histogram, OnlineTdigest, StatisticSet,
+        AbsorbDistribution, Aggregation, Centroid, ExponentialHistogram, Histogram, OnlineTdigest,
+        StatisticSet,
     },
-    pipeline::{
-        aggregator::{AggregatedMetricsMap, DimensionedMeasurementsMap},
-        AbsorbDistribution,
-    },
+    pipeline::{AggregatedMetricsMap, DimensionedMeasurementsMap},
     proto::{
         self,
         goodmetrics::{metrics_client::MetricsClient, Datum, MetricsRequest},

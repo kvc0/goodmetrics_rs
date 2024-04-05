@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::aggregation::StatisticSet;
-use crate::pipeline::aggregator::DimensionPosition;
+use crate::pipeline::DimensionPosition;
 use crate::types::{Dimension, Name};
 
 /// A gauge is a compromise for high throughput metrics. Sometimes you can't afford to

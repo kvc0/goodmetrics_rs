@@ -12,7 +12,7 @@ use crate::{
     gauge::StatisticSetGauge,
     gauge_group::GaugeGroup,
     metrics::MetricsBehavior,
-    pipeline::{aggregator::AggregatedMetricsMap, Sink},
+    pipeline::{AggregatedMetricsMap, Sink},
     types::Name,
 };
 
@@ -326,19 +326,14 @@ mod test {
     use crate::aggregation::Aggregation;
     use crate::aggregation::StatisticSet;
     use crate::gauge::GaugeDimensions;
-    use crate::pipeline::aggregator::{AggregatedMetricsMap, DimensionedMeasurementsMap};
     use crate::pipeline::Sink;
+    use crate::pipeline::{AggregatedMetricsMap, DimensionedMeasurementsMap};
     use crate::types::{Dimension, Name};
     use crate::{
         allocator::{AlwaysNewMetricsAllocator, ArcAllocator, CachedMetrics},
         metrics::{Metrics, MetricsBehavior},
         metrics_factory::RecordingScope,
-        pipeline::{
-            aggregator::{Aggregator, DistributionMode},
-            logging_sink::LoggingSink,
-            serializing_sink::SerializingSink,
-            stream_sink::StreamSink,
-        },
+        pipeline::{Aggregator, DistributionMode, LoggingSink, SerializingSink, StreamSink},
     };
     use std::collections::{BTreeMap, HashMap, HashSet};
     use std::sync::Arc;

@@ -1,21 +1,30 @@
+//! Types for wiring to downstream collectors
+
 use std::time::Duration;
 
 use futures::StreamExt;
 use futures_batch::ChunksTimeoutStreamExt;
 
-use crate::types::{self, Distribution};
+mod aggregator;
+mod logging_sink;
+mod serializing_sink;
+mod stream_sink;
 
-use crate::aggregation::{bucket_10_2_sigfigs, Histogram, OnlineTdigest};
+pub use aggregator::{
+    AggregatedMetricsMap, Aggregator, DimensionPosition, DimensionedMeasurementsMap,
+    DistributionMode, MeasurementAggregationMap, TimeSource,
+};
+pub use logging_sink::LoggingSink;
+pub use serializing_sink::SerializingSink;
+pub use stream_sink::StreamSink;
 
-pub mod aggregator;
-pub mod logging_sink;
-pub mod serializing_sink;
-pub mod stream_sink;
-
+/// A drain that accepts Sunk
 pub trait Sink<Sunk> {
+    /// Take ownership of a value
     fn accept(&self, to_sink: Sunk);
 }
 
+/// Creates size-limited batches of metrics with a batch timeout
 pub fn stream_batches<TUpstream, TSunk, FnBatchMap, TBatch>(
     upstream: impl IntoIterator<Item = TSunk>,
     map_batch: FnBatchMap,
@@ -29,71 +38,4 @@ where
     futures::stream::iter(upstream)
         .chunks_timeout(batch_size, batch_timeout)
         .map(map_batch)
-}
-
-pub trait AbsorbDistribution {
-    fn absorb(&mut self, distribution: Distribution);
-}
-
-impl AbsorbDistribution for Histogram {
-    fn absorb(&mut self, distribution: Distribution) {
-        match distribution {
-            types::Distribution::I64(i) => {
-                self.histogram
-                    .entry(bucket_10_2_sigfigs(i))
-                    .and_modify(|count| *count += 1)
-                    .or_insert(1);
-            }
-            types::Distribution::I32(i) => {
-                self.histogram
-                    .entry(bucket_10_2_sigfigs(i.into()))
-                    .and_modify(|count| *count += 1)
-                    .or_insert(1);
-            }
-            types::Distribution::U64(i) => {
-                self.histogram
-                    .entry(bucket_10_2_sigfigs(i as i64))
-                    .and_modify(|count| *count += 1)
-                    .or_insert(1);
-            }
-            types::Distribution::U32(i) => {
-                self.histogram
-                    .entry(bucket_10_2_sigfigs(i.into()))
-                    .and_modify(|count| *count += 1)
-                    .or_insert(1);
-            }
-            types::Distribution::Collection(collection) => {
-                collection.iter().for_each(|i| {
-                    self.histogram
-                        .entry(bucket_10_2_sigfigs(*i))
-                        .and_modify(|count| *count += 1)
-                        .or_insert(1);
-                });
-            }
-            types::Distribution::Timer { nanos } => {
-                let v = nanos.load(std::sync::atomic::Ordering::Acquire);
-                self.histogram
-                    .entry(bucket_10_2_sigfigs(v as i64))
-                    .and_modify(|count| *count += 1)
-                    .or_insert(1);
-            }
-        };
-    }
-}
-
-impl AbsorbDistribution for OnlineTdigest {
-    fn absorb(&mut self, distribution: Distribution) {
-        match distribution {
-            types::Distribution::I64(i) => self.observe_mut(i as f64),
-            types::Distribution::I32(i) => self.observe_mut(i),
-            types::Distribution::U64(i) => self.observe_mut(i as f64),
-            types::Distribution::U32(i) => self.observe_mut(i),
-            types::Distribution::Collection(collection) => {
-                collection.iter().for_each(|i| self.observe_mut(*i as f64));
-            }
-            types::Distribution::Timer { nanos } => {
-                self.observe_mut(nanos.load(std::sync::atomic::Ordering::Acquire) as f64)
-            }
-        };
-    }
 }

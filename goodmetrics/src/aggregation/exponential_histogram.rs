@@ -5,7 +5,7 @@ use std::{
     sync::atomic::Ordering,
 };
 
-use crate::{pipeline::AbsorbDistribution, types::Distribution};
+use crate::{aggregation::AbsorbDistribution, types::Distribution};
 
 /// A histogram implementation following the opentelemetry exponential histogram algorithm.
 /// This is a pretty good histogram, and can be used in the general case. With goodmetrics,

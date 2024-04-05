@@ -4,10 +4,10 @@ use std::{
 };
 
 use crate::aggregation::Aggregation;
-use crate::pipeline::aggregator::{DimensionedMeasurementsMap, MeasurementAggregationMap};
+use crate::pipeline::{DimensionedMeasurementsMap, MeasurementAggregationMap};
 use crate::{
     gauge::{self, StatisticSetGauge},
-    pipeline::aggregator::DimensionPosition,
+    pipeline::DimensionPosition,
     types::Name,
 };
 
