@@ -44,7 +44,7 @@ pub fn bucket_10_below_2_sigfigs(value: i64) -> i64 {
 
 #[cfg(test)]
 mod test {
-    use crate::pipeline::aggregation::bucket::{bucket_10_2_sigfigs, bucket_10_below_2_sigfigs};
+    use crate::aggregation::bucket::{bucket_10_2_sigfigs, bucket_10_below_2_sigfigs};
 
     #[test_log::test]
     fn test_bucket() {

@@ -1,15 +1,19 @@
-use self::{
-    exponential_histogram::ExponentialHistogram, histogram::Histogram,
-    online_tdigest::OnlineTdigest, statistic_set::StatisticSet,
-};
+//! Types for working with in-memory local aggregations
 
-pub mod bucket;
-pub mod exponential_histogram;
-pub mod histogram;
-pub mod online_tdigest;
-pub mod statistic_set;
-#[allow(clippy::unwrap_used)]
-pub mod tdigest;
+mod bucket;
+mod exponential_histogram;
+mod histogram;
+mod online_tdigest;
+mod statistic_set;
+#[allow(clippy::unwrap_used, unused)]
+mod tdigest;
+
+pub(crate) use bucket::{bucket_10_2_sigfigs, bucket_10_below_2_sigfigs};
+pub use exponential_histogram::ExponentialHistogram;
+pub use histogram::Histogram;
+pub use online_tdigest::OnlineTdigest;
+pub use statistic_set::StatisticSet;
+pub use tdigest::{Centroid, TDigest};
 
 // This will need to be reduced. I'm planning to add object pool references
 // here; after which this won't be an issue anymore.
@@ -17,9 +21,13 @@ pub mod tdigest;
 /// For collecting and periodically reporting
 #[derive(Debug, Clone)]
 pub enum Aggregation {
+    /// An exponential histogram aggregation
     ExponentialHistogram(ExponentialHistogram),
+    /// A tenths-of-base-10 histogram aggregation
     Histogram(Histogram),
+    /// A min/max/sum/count aggregation
     StatisticSet(StatisticSet),
+    /// A t-digest aggregation
     TDigest(OnlineTdigest),
 }
 

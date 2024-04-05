@@ -8,12 +8,8 @@ use tokio::sync::mpsc;
 
 use crate::proto::opentelemetry::{metrics::v1::Gauge, resource::v1::Resource};
 use crate::{
-    pipeline::{
-        aggregation::{
-            bucket::bucket_10_below_2_sigfigs, statistic_set::StatisticSet, Aggregation,
-        },
-        aggregator::{DimensionPosition, DimensionedMeasurementsMap},
-    },
+    aggregation::{bucket_10_below_2_sigfigs, Aggregation, StatisticSet},
+    pipeline::aggregator::{DimensionPosition, DimensionedMeasurementsMap},
     proto::opentelemetry::{
         self,
         collector::metrics::v1::{
@@ -28,10 +24,8 @@ use crate::{
     types::{Dimension, Name},
 };
 use crate::{
-    pipeline::{
-        aggregation::{exponential_histogram::ExponentialHistogram, histogram::Histogram},
-        aggregator::AggregatedMetricsMap,
-    },
+    aggregation::{ExponentialHistogram, Histogram},
+    pipeline::aggregator::AggregatedMetricsMap,
     proto::opentelemetry::metrics::v1::{
         exponential_histogram_data_point::Buckets, ExponentialHistogramDataPoint,
     },
@@ -352,12 +346,13 @@ fn new_number_data_point(
 }
 
 fn as_otel_histogram(
-    mut histogram: Histogram,
+    histogram: Histogram,
     timestamp: SystemTime,
     duration: Duration,
     attributes: Vec<KeyValue>,
 ) -> opentelemetry::metrics::v1::Histogram {
     let timestamp_nanos = timestamp.nanos_since_epoch();
+    let mut histogram = histogram.into_map();
     let bucket_values_count = histogram.values().sum();
     let bucket_values_min = *histogram.keys().min().unwrap_or(&0) as f64;
     let bucket_values_max = *histogram.keys().max().unwrap_or(&0) as f64;

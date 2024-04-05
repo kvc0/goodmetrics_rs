@@ -23,7 +23,7 @@ impl Ord for Centroid {
 }
 
 impl Centroid {
-    pub fn new(mean: f64, weight: f64) -> Self {
+    pub(crate) fn new(mean: f64, weight: f64) -> Self {
         Centroid {
             mean: OrderedFloat::from(mean),
             weight: OrderedFloat::from(weight),
@@ -31,16 +31,16 @@ impl Centroid {
     }
 
     #[inline]
-    pub fn mean(&self) -> f64 {
+    pub(crate) fn mean(&self) -> f64 {
         self.mean.into_inner()
     }
 
     #[inline]
-    pub fn weight(&self) -> f64 {
+    pub(crate) fn weight(&self) -> f64 {
         self.weight.into_inner()
     }
 
-    pub fn add(&mut self, sum: f64, weight: f64) -> f64 {
+    pub(crate) fn add(&mut self, sum: f64, weight: f64) -> f64 {
         let weight_: f64 = self.weight.into_inner();
         let mean_: f64 = self.mean.into_inner();
 
@@ -73,7 +73,7 @@ pub struct TDigest {
 }
 
 impl TDigest {
-    pub fn new_with_size(max_size: usize) -> Self {
+    pub(crate) fn new_with_size(max_size: usize) -> Self {
         TDigest {
             centroids: Vec::new(),
             max_size,
@@ -84,7 +84,7 @@ impl TDigest {
         }
     }
 
-    pub fn new(
+    pub(crate) fn new(
         centroids: Vec<Centroid>,
         sum: f64,
         count: f64,
@@ -113,7 +113,7 @@ impl TDigest {
     }
 
     #[inline]
-    pub fn mean(&self) -> f64 {
+    pub(crate) fn mean(&self) -> f64 {
         let count_: f64 = self.count.into_inner();
         let sum_: f64 = self.sum.into_inner();
 
@@ -125,42 +125,42 @@ impl TDigest {
     }
 
     #[inline]
-    pub fn sum(&self) -> f64 {
+    pub(crate) fn sum(&self) -> f64 {
         self.sum.into_inner()
     }
 
     #[inline]
-    pub fn count(&self) -> f64 {
+    pub(crate) fn count(&self) -> f64 {
         self.count.into_inner()
     }
 
     #[inline]
-    pub fn max(&self) -> f64 {
+    pub(crate) fn max(&self) -> f64 {
         self.max.into_inner()
     }
 
     #[inline]
-    pub fn min(&self) -> f64 {
+    pub(crate) fn min(&self) -> f64 {
         self.min.into_inner()
     }
 
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.centroids.is_empty()
     }
 
     #[inline]
-    pub fn max_size(&self) -> usize {
+    pub(crate) fn max_size(&self) -> usize {
         self.max_size
     }
 
     #[inline]
-    pub fn drain_centroids(&mut self) -> std::vec::Drain<Centroid> {
+    pub(crate) fn drain_centroids(&mut self) -> std::vec::Drain<Centroid> {
         self.centroids.drain(0..self.centroids.len())
     }
 
     #[inline]
-    pub fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.centroids.clear();
         *self.min = 0.0;
         *self.max = 0.0;
@@ -205,7 +205,7 @@ impl TDigest {
         }
     }
 
-    pub fn merge_unsorted(&self, unsorted_values: Vec<f64>) -> TDigest {
+    pub(crate) fn merge_unsorted(&self, unsorted_values: Vec<f64>) -> TDigest {
         let mut sorted_values: Vec<OrderedFloat<f64>> = unsorted_values
             .into_iter()
             .map(OrderedFloat::from)
@@ -216,7 +216,7 @@ impl TDigest {
         self.merge_sorted(sorted_values)
     }
 
-    pub fn merge_sorted(&self, sorted_values: Vec<f64>) -> TDigest {
+    pub(crate) fn merge_sorted(&self, sorted_values: Vec<f64>) -> TDigest {
         if sorted_values.is_empty() {
             return self.clone();
         }
@@ -345,7 +345,7 @@ impl TDigest {
     }
 
     // Merge multiple T-Digests
-    pub fn merge_digests(digests: Vec<TDigest>) -> TDigest {
+    pub(crate) fn merge_digests(digests: Vec<TDigest>) -> TDigest {
         let n_centroids: usize = digests.iter().map(|d| d.centroids.len()).sum();
         if n_centroids == 0 {
             return TDigest::default();
@@ -440,7 +440,7 @@ impl TDigest {
     }
 
     /// To estimate the value located at `q` quantile
-    pub fn estimate_quantile(&self, q: f64) -> f64 {
+    pub(crate) fn estimate_quantile(&self, q: f64) -> f64 {
         if self.centroids.is_empty() {
             return 0.0;
         }

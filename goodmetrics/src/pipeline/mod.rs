@@ -1,13 +1,12 @@
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
 use futures::StreamExt;
 use futures_batch::ChunksTimeoutStreamExt;
 
 use crate::types::{self, Distribution};
 
-use self::aggregation::{bucket::bucket_10_2_sigfigs, online_tdigest::OnlineTdigest};
+use crate::aggregation::{bucket_10_2_sigfigs, Histogram, OnlineTdigest};
 
-pub mod aggregation;
 pub mod aggregator;
 pub mod logging_sink;
 pub mod serializing_sink;
@@ -36,39 +35,45 @@ pub trait AbsorbDistribution {
     fn absorb(&mut self, distribution: Distribution);
 }
 
-impl AbsorbDistribution for HashMap<i64, u64> {
+impl AbsorbDistribution for Histogram {
     fn absorb(&mut self, distribution: Distribution) {
         match distribution {
             types::Distribution::I64(i) => {
-                self.entry(bucket_10_2_sigfigs(i))
+                self.histogram
+                    .entry(bucket_10_2_sigfigs(i))
                     .and_modify(|count| *count += 1)
                     .or_insert(1);
             }
             types::Distribution::I32(i) => {
-                self.entry(bucket_10_2_sigfigs(i.into()))
+                self.histogram
+                    .entry(bucket_10_2_sigfigs(i.into()))
                     .and_modify(|count| *count += 1)
                     .or_insert(1);
             }
             types::Distribution::U64(i) => {
-                self.entry(bucket_10_2_sigfigs(i as i64))
+                self.histogram
+                    .entry(bucket_10_2_sigfigs(i as i64))
                     .and_modify(|count| *count += 1)
                     .or_insert(1);
             }
             types::Distribution::U32(i) => {
-                self.entry(bucket_10_2_sigfigs(i.into()))
+                self.histogram
+                    .entry(bucket_10_2_sigfigs(i.into()))
                     .and_modify(|count| *count += 1)
                     .or_insert(1);
             }
             types::Distribution::Collection(collection) => {
                 collection.iter().for_each(|i| {
-                    self.entry(bucket_10_2_sigfigs(*i))
+                    self.histogram
+                        .entry(bucket_10_2_sigfigs(*i))
                         .and_modify(|count| *count += 1)
                         .or_insert(1);
                 });
             }
             types::Distribution::Timer { nanos } => {
                 let v = nanos.load(std::sync::atomic::Ordering::Acquire);
-                self.entry(bucket_10_2_sigfigs(v as i64))
+                self.histogram
+                    .entry(bucket_10_2_sigfigs(v as i64))
                     .and_modify(|count| *count += 1)
                     .or_insert(1);
             }

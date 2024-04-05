@@ -317,9 +317,9 @@ where
 
 #[cfg(test)]
 mod test {
+    use crate::aggregation::Aggregation;
+    use crate::aggregation::StatisticSet;
     use crate::gauge::GaugeDimensions;
-    use crate::pipeline::aggregation::statistic_set::StatisticSet;
-    use crate::pipeline::aggregation::Aggregation;
     use crate::pipeline::aggregator::{AggregatedMetricsMap, DimensionedMeasurementsMap};
     use crate::pipeline::Sink;
     use crate::types::{Dimension, Name};

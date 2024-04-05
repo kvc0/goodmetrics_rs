@@ -13,12 +13,9 @@ use crate::{
     types::{self, Dimension, Measurement, Name},
 };
 
-use super::{
-    aggregation::{
-        exponential_histogram::ExponentialHistogram, histogram::Histogram,
-        online_tdigest::OnlineTdigest, statistic_set::StatisticSet, Aggregation,
-    },
-    AbsorbDistribution,
+use crate::{
+    aggregation::{Aggregation, ExponentialHistogram, Histogram, OnlineTdigest, StatisticSet},
+    pipeline::AbsorbDistribution,
 };
 
 /// User-named metrics
@@ -383,9 +380,10 @@ mod test {
     };
 
     use crate::{
+        aggregation::StatisticSet,
         allocator::{AlwaysNewMetricsAllocator, MetricsAllocator},
         metrics::Metrics,
-        pipeline::aggregator::{Aggregation, Aggregator, DistributionMode, StatisticSet},
+        pipeline::aggregator::{Aggregation, Aggregator, DistributionMode},
         types::{Dimension, Name, Observation},
     };
 

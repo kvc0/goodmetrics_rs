@@ -4,7 +4,7 @@ use std::{
     time::Instant,
 };
 
-use crate::pipeline::aggregation::statistic_set::StatisticSet;
+use crate::aggregation::StatisticSet;
 use crate::pipeline::aggregator::DimensionPosition;
 use crate::types::{Dimension, Name};
 

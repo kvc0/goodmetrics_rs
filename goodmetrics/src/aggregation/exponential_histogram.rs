@@ -7,6 +7,10 @@ use std::{
 
 use crate::{pipeline::AbsorbDistribution, types::Distribution};
 
+/// A histogram implementation following the opentelemetry exponential histogram algorithm.
+/// This is a pretty good histogram, and can be used in the general case. With goodmetrics,
+/// you will want to make sure you use small enough units as goodmetrics histograms are
+/// keyed by i64.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExponentialHistogram {
     actual_scale: u8,
@@ -41,6 +45,7 @@ impl ExponentialHistogram {
         }
     }
 
+    /// Observe a value, and increase its bucket count by 1
     pub fn accumulate<T: Into<f64>>(&mut self, value: T) {
         self.accumulate_count(value, 1)
     }
@@ -144,6 +149,7 @@ impl ExponentialHistogram {
         }
     }
 
+    /// How many observations have been made?
     pub fn count(&self) -> usize {
         let mut count = 0;
         for i in &self.positive_buckets {
@@ -194,26 +200,35 @@ impl ExponentialHistogram {
             .unwrap_or_default()
     }
 
+    /// What is the current scale (as defined by opentelemetry exponential histogram)?
     pub fn scale(&self) -> u8 {
         self.actual_scale
     }
 
+    /// What is the current bucket start offset (as defined by opentelemetry exponential histogram)?
     pub fn bucket_start_offset(&self) -> usize {
         self.bucket_start_offset as usize
     }
 
+    /// Remove and return the bucket counts for the positive buckets. Remember that index 0 is actually
+    /// the bucket_start_offset()'th bucket (as defined by opentelemetry exponential histogram).
     pub fn take_positives(&mut self) -> VecDeque<usize> {
         std::mem::take(&mut self.positive_buckets)
     }
 
+    /// Remove and return the bucket counts for the negative buckets. Remember that index 0 is actually
+    /// the bucket_start_offset()'th bucket (as defined by opentelemetry exponential histogram).
     pub fn take_negatives(&mut self) -> VecDeque<usize> {
         std::mem::take(&mut self.negative_buckets)
     }
 
+    /// Are there any negative observations?
     pub fn has_negatives(&self) -> bool {
         !self.negative_buckets.is_empty()
     }
 
+    /// Iterate pairs of bucket->count. The bucket thresholds are defined by the opentelemetry exponential
+    /// histogram format. You do not need to do any extra math, this walks the actual mapping of bucket-to-count.
     pub fn value_counts(&self) -> impl Iterator<Item = (f64, usize)> + '_ {
         self.negative_buckets
             .iter()
@@ -294,9 +309,7 @@ impl AbsorbDistribution for ExponentialHistogram {
 mod test {
     use std::time::{Duration, Instant};
 
-    use crate::pipeline::aggregation::exponential_histogram::{
-        lower_boundary, map_value_to_scale_index,
-    };
+    use crate::aggregation::exponential_histogram::{lower_boundary, map_value_to_scale_index};
 
     use super::ExponentialHistogram;
 

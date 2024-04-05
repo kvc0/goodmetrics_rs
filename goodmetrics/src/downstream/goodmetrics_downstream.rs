@@ -6,11 +6,10 @@ use std::{
 use tokio::sync::mpsc;
 
 use crate::{
+    aggregation::{
+        Aggregation, Centroid, ExponentialHistogram, Histogram, OnlineTdigest, StatisticSet,
+    },
     pipeline::{
-        aggregation::{
-            exponential_histogram::ExponentialHistogram, online_tdigest::OnlineTdigest,
-            statistic_set::StatisticSet, tdigest::Centroid, Aggregation,
-        },
         aggregator::{AggregatedMetricsMap, DimensionedMeasurementsMap},
         AbsorbDistribution,
     },
@@ -146,7 +145,9 @@ impl From<Aggregation> for proto::goodmetrics::Measurement {
             value: Some(match value {
                 Aggregation::Histogram(buckets) => {
                     proto::goodmetrics::measurement::Value::Histogram(
-                        proto::goodmetrics::Histogram { buckets },
+                        proto::goodmetrics::Histogram {
+                            buckets: buckets.into_map(),
+                        },
                     )
                 }
                 Aggregation::StatisticSet(statistic_set) => {
@@ -209,9 +210,11 @@ impl From<StatisticSet> for proto::goodmetrics::StatisticSet {
 
 impl From<Distribution> for proto::goodmetrics::measurement::Value {
     fn from(value: Distribution) -> Self {
-        let mut map = HashMap::new();
-        map.absorb(value);
-        Self::Histogram(proto::goodmetrics::Histogram { buckets: map })
+        let mut histogram = Histogram::default();
+        histogram.absorb(value);
+        Self::Histogram(proto::goodmetrics::Histogram {
+            buckets: histogram.into_map(),
+        })
     }
 }
 

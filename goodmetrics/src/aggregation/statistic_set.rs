@@ -1,10 +1,15 @@
 use std::cmp::{max, min};
 
+/// The most basic aggregation.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct StatisticSet {
+    /// Minimum observed value
     pub min: i64,
+    /// Maximum observed value
     pub max: i64,
+    /// Sum of all observed values
     pub sum: i64,
+    /// Count of observations
     pub count: u64,
 }
 

@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use crate::pipeline::aggregation::Aggregation;
+use crate::aggregation::Aggregation;
 use crate::pipeline::aggregator::{DimensionedMeasurementsMap, MeasurementAggregationMap};
 use crate::{
     gauge::{self, StatisticSetGauge},

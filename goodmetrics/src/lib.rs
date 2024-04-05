@@ -17,6 +17,9 @@
 //!
 //! # Feature Flags
 //!
+
+#[deny(missing_docs)]
+pub mod aggregation;
 #[deny(missing_docs)]
 pub mod allocator;
 #[deny(missing_docs)]
