@@ -34,12 +34,14 @@ mod metrics;
 mod metrics_factory;
 #[deny(missing_docs)]
 pub mod pipeline;
-pub mod types;
+#[deny(missing_docs)]
+mod types;
 
 pub use gauge::{GaugeDimensions, StatisticSetGauge};
 pub use gauge_group::GaugeGroup;
 pub use metrics::{DimensionGuard, Metrics, MetricsBehavior, Timer};
 pub use metrics_factory::{MetricsFactory, RecordingScope};
+pub use types::{Dimension, Distribution, Measurement, Name, Observation};
 
 /// Internal generated types - ideally you shouldn't need to do much with them.
 /// Nevertheless, they are exported in case you need them.

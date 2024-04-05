@@ -6,12 +6,12 @@ use goodmetrics::allocator::AlwaysNewMetricsAllocator;
 use goodmetrics::pipeline::StreamSink;
 use hyper::{header::HeaderName, http::HeaderValue};
 
-use goodmetrics::types::{Dimension, Name};
 use goodmetrics::{
     downstream::{create_preaggregated_opentelemetry_batch, get_channel, OpenTelemetryDownstream},
     pipeline::{Aggregator, DistributionMode},
     MetricsFactory, RecordingScope,
 };
+use goodmetrics::{Dimension, Name};
 use tokio::join;
 use tokio::sync::mpsc;
 use tokio_rustls::rustls::{OwnedTrustAnchor, RootCertStore};

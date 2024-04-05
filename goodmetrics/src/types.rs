@@ -7,12 +7,16 @@ use std::{
 /// The value part of a dimension's key/value pair.
 #[derive(Debug, Eq, Hash, PartialEq, Clone)]
 pub enum Dimension {
+    /// A static string dimension. Feel really good about these.
     Str(&'static str),
+    /// Avoid String dimensions when you can, as clones can add up.
     String(String),
     /// If you have a rarely-changing identifier you could consider using shared memory
     /// instead of cloning repeatedly.
     Shared(Arc<String>),
+    /// A number dimension.
     Number(u64),
+    /// A boolean dimension.
     Boolean(bool),
 }
 
@@ -31,7 +35,9 @@ impl Display for Dimension {
 /// An identifier for various things.
 #[derive(Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Clone)]
 pub enum Name {
+    /// A static string Name.
     Str(&'static str),
+    /// A String name. Avoid these when you can, because clones can add up.
     String(String),
     /// If you have a rarely-changing identifier you could consider using shared memory
     /// instead of cloning repeatedly.
@@ -44,6 +50,7 @@ pub enum Name {
 }
 
 impl Name {
+    /// an &str view of the name
     pub fn as_str(&self) -> &str {
         match self {
             Name::Str(s) => s,
@@ -79,42 +86,57 @@ impl Display for Name {
 /// and the distribution kind.
 #[derive(Debug)]
 pub enum Measurement {
+    /// A single value
     Observation(Observation),
+    /// A value to be grouped into a distribution
     Distribution(Distribution),
 }
 
 /// Individual values
 #[derive(Debug)]
 pub enum Observation {
+    /// an integer value
     I64(i64),
+    /// an integer value
     I32(i32),
+    /// an unsigned integer value
     U64(u64),
+    /// an unsigned integer value
     U32(u32),
+    /// a floating point value
     F64(f64),
+    /// a floating point value
     F32(f32),
 }
 
 /// Values able to be collected into a distribution
 #[derive(Debug)]
 pub enum Distribution {
+    /// an integer distribution value
     I64(i64),
+    /// an integer distribution value
     I32(i32),
+    /// an unsigned integer distribution value
     U64(u64),
+    /// an unsigned integer distribution value
     U32(u32),
-    // Encapsulates observations of a raw value.
-    // Bucketing and aggregation happens in the pipeline.
-    // From<&[u8]> is not defined because it costs a copy.
-    // Also, this unconditionally uses the global allocator.
-    // PR to plumb the allocator type out would be welcome.
+    /// Encapsulates observations of a raw value.
+    /// Bucketing and aggregation happens in the pipeline.
+    /// From<&[u8]> is not defined because it costs a copy.
+    /// Also, this unconditionally uses the global allocator.
+    /// PR to plumb the allocator type out would be welcome.
     Collection(Vec<i64>),
-    // A helper for recording a distribution of time. This is
-    // shared by a Timer with a Drop implementation and the
-    // Metrics object for it. I don't enforce that the timer
-    // is dropped before the metrics, because tokio::spawn
-    // requires that the closure is owned for 'static. So
-    // extremely rigorous correctness takes a backseat to
-    // usability here.
-    Timer { nanos: Arc<AtomicUsize> },
+    /// A helper for recording a distribution of time. This is
+    /// shared by a Timer with a Drop implementation and the
+    /// Metrics object for it. I don't enforce that the timer
+    /// is dropped before the metrics, because tokio::spawn
+    /// requires that the closure is owned for 'static. So
+    /// extremely rigorous correctness takes a backseat to
+    /// usability here.
+    Timer {
+        /// The number of nanoseconds this value represents.
+        nanos: Arc<AtomicUsize>,
+    },
 }
 
 impl From<&Observation> for f64 {

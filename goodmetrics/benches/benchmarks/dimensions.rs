@@ -5,7 +5,7 @@ use std::{
 };
 
 use criterion::{black_box, Criterion};
-use goodmetrics::types::Dimension;
+use goodmetrics::Dimension;
 
 #[allow(clippy::unwrap_used)]
 pub fn dimension_comparison(criterion: &mut Criterion) {
