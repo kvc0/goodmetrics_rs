@@ -52,10 +52,10 @@ where
     }
 }
 
-impl<'a, TBuildHasher: Send> MetricsAllocator<'a, CachedMetrics<TBuildHasher>>
+impl<TBuildHasher: Send> MetricsAllocator<CachedMetrics<TBuildHasher>>
     for ArcAllocator<TBuildHasher>
 where
-    TBuildHasher: BuildHasher + Default + 'a,
+    TBuildHasher: BuildHasher + Default,
 {
     #[inline]
     fn new_metrics(&self, metrics_name: impl Into<Name>) -> CachedMetrics<TBuildHasher> {

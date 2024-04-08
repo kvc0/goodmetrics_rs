@@ -41,7 +41,6 @@ http-body                       = { workspace = true }
 hyper                           = { workspace = true }
 hyper-rustls                    = { workspace = true }
 log                             = { workspace = true }
-object-pool                     = { workspace = true }
 ordered-float                   = { workspace = true }
 prost                           = { workspace = true }
 tokio                           = { workspace = true }

@@ -123,8 +123,8 @@ where
 impl<'a, TMetricsRef, TMetricsAllocator, TSink> ReturnTarget<'a, TMetricsRef>
     for MetricsFactory<TMetricsAllocator, TSink>
 where
-    TMetricsRef: MetricsRef + 'a,
-    TMetricsAllocator: MetricsAllocator<'a, TMetricsRef>,
+    TMetricsRef: MetricsRef + 'static,
+    TMetricsAllocator: MetricsAllocator<TMetricsRef>,
     TSink: Sink<TMetricsRef>,
 {
     fn return_referent(&self, to_return: TMetricsRef) {
@@ -135,9 +135,9 @@ where
 impl<'a, TMetricsRef, TMetricsAllocator, TSink> RecordingScope<'a, TMetricsRef>
     for MetricsFactory<TMetricsAllocator, TSink>
 where
-    TMetricsRef: MetricsRef + 'a,
+    TMetricsRef: MetricsRef + 'static,
     TSink: Sink<TMetricsRef>,
-    TMetricsAllocator: MetricsAllocator<'a, TMetricsRef>,
+    TMetricsAllocator: MetricsAllocator<TMetricsRef>,
 {
     #[inline]
     fn record_scope(&'a self, scope_name: impl Into<Name>) -> ReturningRef<'a, TMetricsRef, Self> {

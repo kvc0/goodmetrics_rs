@@ -15,9 +15,9 @@ use super::MetricsAllocator;
 #[derive(Clone, Default)]
 pub struct AlwaysNewMetricsAllocator;
 
-impl<'a, TBuildHasher> MetricsAllocator<'a, Metrics<TBuildHasher>> for AlwaysNewMetricsAllocator
+impl<TBuildHasher> MetricsAllocator<Metrics<TBuildHasher>> for AlwaysNewMetricsAllocator
 where
-    TBuildHasher: BuildHasher + Default + 'a,
+    TBuildHasher: BuildHasher + Default + 'static,
 {
     #[inline]
     fn new_metrics(&self, metrics_name: impl Into<Name>) -> Metrics<TBuildHasher> {
