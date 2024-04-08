@@ -12,6 +12,7 @@ categories = ["web-programming", "development-tools::profiling"]
 
 [features]
 ahash-hasher    = ["ahash"]
+introspect      = ["arc-swap"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -34,6 +35,8 @@ harness = false
 
 [dependencies]
 ahash                           = { workspace = true, optional = true }
+arc-swap                        = { workspace = true, optional = true }
+
 bytes                           = { workspace = true }
 futures                         = { workspace = true }
 futures-batch                   = { workspace = true }

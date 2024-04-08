@@ -94,62 +94,50 @@ where
     }
 }
 
-/// MetricsFactory recording behaviors
-pub trait RecordingScope<'a, TMetricsRef: 'a>: ReturnTarget<'a, TMetricsRef>
+impl<'a, TMetricsAllocator, TSink> ReturnTarget<TMetricsAllocator::TMetricsRef>
+    for &'a MetricsFactory<TMetricsAllocator, TSink>
 where
-    Self: Sized,
+    TMetricsAllocator: MetricsAllocator + 'static,
+    TMetricsAllocator::TMetricsRef: MetricsRef,
+    TSink: Sink<TMetricsAllocator::TMetricsRef> + 'static,
 {
-    /// The MetricsScope, when completed, records a `totaltime` in nanoseconds.
-    fn record_scope(&'a self, scope_name: impl Into<Name>) -> ReturningRef<'a, TMetricsRef, Self>;
-
-    /// The MetricsScope, when completed, records a `totaltime` in nanoseconds.
-    fn record_scope_with_behavior(
-        &'a self,
-        scope_name: impl Into<Name>,
-        behavior: MetricsBehavior,
-    ) -> ReturningRef<'a, TMetricsRef, Self>;
-
-    /// Called with the metrics ref that was vended via record_scope
-    fn emit(&self, metrics: TMetricsRef);
-
-    /// # Safety
-    ///
-    /// You should strongly consider using record_scope() instead.
-    /// You _must_ emit() the returned instance through this MetricsFactory instance
-    /// or else you may leak memory, depending on the semantics of your allocator.
-    unsafe fn create_new_raw_metrics(&'a self, metrics_name: impl Into<Name>) -> TMetricsRef;
-}
-
-impl<'a, TMetricsRef, TMetricsAllocator, TSink> ReturnTarget<'a, TMetricsRef>
-    for MetricsFactory<TMetricsAllocator, TSink>
-where
-    TMetricsRef: MetricsRef + 'static,
-    TMetricsAllocator: MetricsAllocator<TMetricsRef>,
-    TSink: Sink<TMetricsRef>,
-{
-    fn return_referent(&self, to_return: TMetricsRef) {
+    fn return_referent(&self, to_return: TMetricsAllocator::TMetricsRef) {
         self.emit(to_return);
     }
 }
 
-impl<'a, TMetricsRef, TMetricsAllocator, TSink> RecordingScope<'a, TMetricsRef>
-    for MetricsFactory<TMetricsAllocator, TSink>
+impl<TMetricsAllocator, TSink> ReturnTarget<TMetricsAllocator::TMetricsRef>
+    for Arc<MetricsFactory<TMetricsAllocator, TSink>>
 where
-    TMetricsRef: MetricsRef + 'static,
-    TSink: Sink<TMetricsRef>,
-    TMetricsAllocator: MetricsAllocator<TMetricsRef>,
+    TMetricsAllocator: MetricsAllocator + 'static,
+    TMetricsAllocator::TMetricsRef: MetricsRef,
+    TSink: Sink<TMetricsAllocator::TMetricsRef> + 'static,
 {
-    #[inline]
-    fn record_scope(&'a self, scope_name: impl Into<Name>) -> ReturningRef<'a, TMetricsRef, Self> {
+    fn return_referent(&self, to_return: TMetricsAllocator::TMetricsRef) {
+        self.emit(to_return);
+    }
+}
+
+impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink>
+where
+    TSink: Sink<TMetricsAllocator::TMetricsRef> + 'static,
+    TMetricsAllocator: MetricsAllocator + 'static,
+    TMetricsAllocator::TMetricsRef: MetricsRef,
+{
+    /// The MetricsScope, when completed, records a `totaltime` in nanoseconds.
+    pub fn record_scope(
+        &self,
+        scope_name: impl Into<Name>,
+    ) -> ReturningRef<TMetricsAllocator::TMetricsRef, &Self> {
         ReturningRef::new(self, unsafe { self.create_new_raw_metrics(scope_name) })
     }
 
-    #[inline]
-    fn record_scope_with_behavior(
-        &'a self,
+    /// The MetricsScope, when completed, records a `totaltime` in nanoseconds.
+    pub fn record_scope_with_behavior(
+        &self,
         scope_name: impl Into<Name>,
         behavior: MetricsBehavior,
-    ) -> ReturningRef<'a, TMetricsRef, Self> {
+    ) -> ReturningRef<TMetricsAllocator::TMetricsRef, &Self> {
         ReturningRef::new(self, unsafe {
             let mut m = self.create_new_raw_metrics(scope_name);
             m.as_mut().add_behavior(behavior);
@@ -157,9 +145,19 @@ where
         })
     }
 
-    // You should consider using record_scope() instead.
-    #[inline]
-    fn emit(&self, mut metrics: TMetricsRef) {
+    /// The MetricsScope, when completed, records a `totaltime` in nanoseconds.
+    #[allow(unused)]
+    pub(crate) fn record_scope_owned(
+        self: Arc<Self>,
+        scope_name: impl Into<Name>,
+    ) -> ReturningRef<TMetricsAllocator::TMetricsRef, Arc<Self>> {
+        let metrics = unsafe { self.create_new_raw_metrics(scope_name) };
+        ReturningRef::new(self, metrics)
+    }
+
+    /// Called with the metrics ref that was vended via record_scope
+    /// You should consider using record_scope() instead.
+    pub(crate) fn emit(&self, mut metrics: TMetricsAllocator::TMetricsRef) {
         if metrics.as_ref().has_behavior(MetricsBehavior::Suppress) {
             return;
         }
@@ -179,8 +177,10 @@ where
     /// You should strongly consider using record_scope() instead.
     /// You _must_ emit() the returned instance through this MetricsFactory instance
     /// or else you may leak memory, depending on the semantics of your allocator.
-    #[inline]
-    unsafe fn create_new_raw_metrics(&'a self, metrics_name: impl Into<Name>) -> TMetricsRef {
+    pub(crate) unsafe fn create_new_raw_metrics(
+        &self,
+        metrics_name: impl Into<Name>,
+    ) -> TMetricsAllocator::TMetricsRef {
         let mut m = self.allocator.new_metrics(metrics_name);
         m.as_mut().set_raw_behavior(self.default_metrics_behavior);
         if self.disabled {
@@ -332,7 +332,6 @@ mod test {
     use crate::{
         allocator::{AlwaysNewMetricsAllocator, ArcAllocator, CachedMetrics},
         metrics::{Metrics, MetricsBehavior},
-        metrics_factory::RecordingScope,
         pipeline::{Aggregator, DistributionMode, LoggingSink, SerializingSink, StreamSink},
     };
     use std::collections::{BTreeMap, HashMap, HashSet};

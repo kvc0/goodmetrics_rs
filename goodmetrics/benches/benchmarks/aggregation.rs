@@ -8,7 +8,7 @@ use goodmetrics::{
     allocator::AlwaysNewMetricsAllocator,
     downstream::create_preaggregated_opentelemetry_batch,
     pipeline::{Aggregator, DistributionMode, StreamSink},
-    MetricsFactory, RecordingScope,
+    MetricsFactory,
 };
 use tokio::sync::mpsc;
 

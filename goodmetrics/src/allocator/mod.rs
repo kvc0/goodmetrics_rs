@@ -31,10 +31,10 @@ impl<T, TBuildHasher> MetricsRef<TBuildHasher> for T where
 }
 
 /// Extension for integration with object pools
-pub trait MetricsAllocator<TMetricsRef>
-where
-    TMetricsRef: 'static,
-{
+pub trait MetricsAllocator {
+    /// Type of metrics the allocator makes.
+    type TMetricsRef;
+
     /// Return a clean Metrics instance, possibly reused.
-    fn new_metrics(&self, metrics_name: impl Into<Name>) -> TMetricsRef;
+    fn new_metrics(&self, metrics_name: impl Into<Name>) -> Self::TMetricsRef;
 }

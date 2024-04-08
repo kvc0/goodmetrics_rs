@@ -1,11 +1,11 @@
-use std::{collections::HashMap, hash::BuildHasher, time::Instant};
+use std::{collections::HashMap, time::Instant};
 
 use crate::{
     metrics::{Metrics, MetricsBehavior},
     types::Name,
 };
 
-use super::MetricsAllocator;
+use super::{Hasher, MetricsAllocator};
 
 /// Allocator which always creates a new instance.
 /// You may want a pooled or arc allocator if you are doing
@@ -15,12 +15,11 @@ use super::MetricsAllocator;
 #[derive(Clone, Default)]
 pub struct AlwaysNewMetricsAllocator;
 
-impl<TBuildHasher> MetricsAllocator<Metrics<TBuildHasher>> for AlwaysNewMetricsAllocator
-where
-    TBuildHasher: BuildHasher + Default + 'static,
-{
+impl MetricsAllocator for AlwaysNewMetricsAllocator {
+    type TMetricsRef = Metrics<Hasher>;
+
     #[inline]
-    fn new_metrics(&self, metrics_name: impl Into<Name>) -> Metrics<TBuildHasher> {
+    fn new_metrics(&self, metrics_name: impl Into<Name>) -> Self::TMetricsRef {
         Metrics::new(
             metrics_name,
             Instant::now(),

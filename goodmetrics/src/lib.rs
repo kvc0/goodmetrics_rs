@@ -28,6 +28,9 @@ pub mod downstream;
 mod gauge;
 #[deny(missing_docs)]
 mod gauge_group;
+#[cfg(feature = "introspect")]
+#[deny(missing_docs)]
+pub mod introspect;
 #[deny(missing_docs)]
 mod metrics;
 #[deny(missing_docs)]
@@ -40,7 +43,7 @@ mod types;
 pub use gauge::{GaugeDimensions, StatisticSetGauge};
 pub use gauge_group::GaugeGroup;
 pub use metrics::{DimensionGuard, Metrics, MetricsBehavior, Timer};
-pub use metrics_factory::{MetricsFactory, RecordingScope};
+pub use metrics_factory::MetricsFactory;
 pub use types::{Dimension, Distribution, Measurement, Name, Observation};
 
 /// Internal generated types - ideally you shouldn't need to do much with them.

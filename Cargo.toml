@@ -9,6 +9,7 @@ members = [
 
 [workspace.dependencies]
 ahash                           = { version = "0.8" }
+arc-swap                        = { version = "1.7" }
 bytes                           = { version = "1.5" }
 criterion                       = { version = "0.5" }
 env_logger                      = { version = "0.11" }

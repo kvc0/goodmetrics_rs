@@ -9,7 +9,7 @@ use hyper::{header::HeaderName, http::HeaderValue};
 use goodmetrics::{
     downstream::{create_preaggregated_opentelemetry_batch, get_channel, OpenTelemetryDownstream},
     pipeline::{Aggregator, DistributionMode},
-    MetricsFactory, RecordingScope,
+    MetricsFactory,
 };
 use goodmetrics::{Dimension, Name};
 use tokio::join;
