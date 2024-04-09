@@ -7,10 +7,8 @@ mod goodmetrics_downstream;
 mod opentelemetry_downstream;
 
 pub use channel_connection::{get_channel, ChannelType};
-pub use goodmetrics_downstream::{create_preaggregated_goodmetrics_batch, GoodmetricsDownstream};
-pub use opentelemetry_downstream::{
-    create_preaggregated_opentelemetry_batch, OpenTelemetryDownstream,
-};
+pub use goodmetrics_downstream::{GoodmetricsBatcher, GoodmetricsDownstream};
+pub use opentelemetry_downstream::{OpenTelemetryDownstream, OpentelemetryBatcher};
 
 pub(crate) type StdError = Box<dyn std::error::Error + Send + Sync + 'static>;
 

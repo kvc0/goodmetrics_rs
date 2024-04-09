@@ -10,7 +10,7 @@ use crate::{
     allocator::{MetricsAllocator, MetricsRef, ReturnTarget, ReturningRef},
     gauge_group::GaugeGroup,
     metrics::MetricsBehavior,
-    pipeline::{AggregatedMetricsMap, Sink},
+    pipeline::{AggregatedMetricsMap, AggregationBatcher, Sink},
     types::Name,
 };
 use crate::{gauge::GaugeDimensions, Gauge};
@@ -21,13 +21,13 @@ use crate::{gauge::GaugeDimensions, Gauge};
 /// # let runtime = tokio::runtime::Builder::new_current_thread().build().expect("runtime can be built");
 /// # runtime.block_on(async {
 /// use goodmetrics::allocator::AlwaysNewMetricsAllocator;
-/// use goodmetrics::downstream::goodmetrics_downstream::create_preaggregated_goodmetrics_batch;
-/// use goodmetrics::downstream::goodmetrics_downstream::GoodmetricsDownstream;
-/// use goodmetrics::metrics::Metrics;
-/// use goodmetrics::metrics_factory::MetricsFactory;
-/// use goodmetrics::pipeline::aggregator::Aggregator;
-/// use goodmetrics::pipeline::aggregator::DistributionMode;
-/// use goodmetrics::pipeline::stream_sink::StreamSink;
+/// use goodmetrics::downstream::GoodmetricsBatcher;
+/// use goodmetrics::downstream::GoodmetricsDownstream;
+/// use goodmetrics::Metrics;
+/// use goodmetrics::MetricsFactory;
+/// use goodmetrics::pipeline::Aggregator;
+/// use goodmetrics::pipeline::DistributionMode;
+/// use goodmetrics::pipeline::StreamSink;
 ///
 /// // 1. Make your metrics factory:
 /// let (metrics_sink, raw_metrics_receiver) = StreamSink::new();
@@ -48,7 +48,7 @@ use crate::{gauge::GaugeDimensions, Gauge};
 ///     aggregator.aggregate_metrics_forever(
 ///         std::time::Duration::from_secs(1),
 ///         aggregated_batch_sender.clone(),
-///         create_preaggregated_goodmetrics_batch,
+///         GoodmetricsBatcher,
 ///     )
 /// );
 /// // Send batches to the downstream collector, whatever you have.
@@ -60,7 +60,7 @@ use crate::{gauge::GaugeDimensions, Gauge};
 ///     metrics_factory.clone().report_gauges_forever(
 ///         std::time::Duration::from_secs(1),
 ///         aggregated_batch_sender,
-///         create_preaggregated_goodmetrics_batch,
+///         GoodmetricsBatcher,
 ///     )
 /// );
 ///
@@ -260,15 +260,14 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
     }
 
     /// You'll want to schedule this in your runtime if you are using Gauges.
-    pub async fn report_gauges_forever<TMakeBatchFunction, TBatch>(
+    pub async fn report_gauges_forever<TAggregationBatcher>(
         self: Arc<Self>,
         period: Duration,
-        sender: mpsc::Sender<TBatch>,
-        make_batch: TMakeBatchFunction,
+        sender: mpsc::Sender<TAggregationBatcher::TBatch>,
+        mut batcher: TAggregationBatcher,
     ) where
-        TMakeBatchFunction:
-            Fn(SystemTime, Duration, &mut AggregatedMetricsMap) -> TBatch + Send + 'static,
-        TBatch: Send + 'static,
+        TAggregationBatcher: AggregationBatcher,
+        TAggregationBatcher::TBatch: Send,
     {
         let mut interval = tokio::time::interval(period);
         interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -289,7 +288,7 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
                     }
                 })
                 .collect();
-            match sender.try_send(make_batch(now, period, &mut gauges)) {
+            match sender.try_send(batcher.batch_aggregations(now, period, &mut gauges)) {
                 Ok(_) => log::debug!("reported batch"),
                 Err(e) => {
                     log::error!("could not report gauges: {e:?}")
@@ -355,6 +354,7 @@ mod test {
     use crate::aggregation::Aggregation;
     use crate::aggregation::StatisticSet;
     use crate::gauge::GaugeDimensions;
+    use crate::pipeline::AggregationBatcher;
     use crate::pipeline::Sink;
     use crate::pipeline::{AggregatedMetricsMap, DimensionedMeasurementsMap};
     use crate::types::{Dimension, Name};
@@ -450,6 +450,19 @@ mod test {
         impl Sink<Metrics> for DropSink {
             fn accept(&self, _: Metrics) {}
         }
+        struct BatchTaker;
+        impl AggregationBatcher for BatchTaker {
+            type TBatch = HashMap<Name, DimensionedMeasurementsMap>;
+
+            fn batch_aggregations(
+                &mut self,
+                _now: SystemTime,
+                _covered_time: Duration,
+                aggregations: &mut AggregatedMetricsMap,
+            ) -> Self::TBatch {
+                std::mem::take(aggregations)
+            }
+        }
 
         let (sender, mut receiver) = tokio::sync::mpsc::channel(128);
 
@@ -483,12 +496,6 @@ mod test {
             dimensions,
         );
 
-        let batch_fn =
-            |_timestamp: SystemTime,
-             _duration: Duration,
-             batch: &mut AggregatedMetricsMap|
-             -> HashMap<Name, DimensionedMeasurementsMap> { std::mem::take(batch) };
-
         non_dimensioned_gauge.observe(20);
         non_dimensioned_gauge.observe(22);
         dimensioned_gauge_one.observe(100);
@@ -497,7 +504,7 @@ mod test {
         tokio::task::spawn(metrics_factory.clone().report_gauges_forever(
             Duration::from_millis(1),
             sender,
-            batch_fn,
+            BatchTaker,
         ));
 
         let result = receiver.recv().await.expect("should have received metrics");

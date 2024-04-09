@@ -5,7 +5,7 @@ use hyper::{header::HeaderName, http::HeaderValue};
 
 use goodmetrics::{
     allocator::AlwaysNewMetricsAllocator,
-    downstream::{create_preaggregated_goodmetrics_batch, get_channel, GoodmetricsDownstream},
+    downstream::{get_channel, GoodmetricsBatcher, GoodmetricsDownstream},
     pipeline::{Aggregator, DistributionMode, StreamSink},
     MetricsFactory,
 };
@@ -46,7 +46,7 @@ pub fn goodmetrics_demo(criterion: &mut Criterion) {
                 aggregator.aggregate_metrics_forever(
                     Duration::from_secs(1),
                     aggregated_batch_sender,
-                    create_preaggregated_goodmetrics_batch
+                    GoodmetricsBatcher,
                 ),
                 downstream.send_batches_forever(receiver),
             );

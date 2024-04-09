@@ -11,8 +11,8 @@ mod serializing_sink;
 mod stream_sink;
 
 pub use aggregator::{
-    AggregatedMetricsMap, Aggregator, DimensionPosition, DimensionedMeasurementsMap,
-    DistributionMode, MeasurementAggregationMap, TimeSource,
+    AggregatedMetricsMap, AggregationBatcher, Aggregator, DimensionPosition,
+    DimensionedMeasurementsMap, DistributionMode, MeasurementAggregationMap, TimeSource,
 };
 pub use logging_sink::LoggingSink;
 pub use serializing_sink::SerializingSink;

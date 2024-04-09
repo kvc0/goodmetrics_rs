@@ -6,7 +6,7 @@ use std::{
 use criterion::{measurement::WallTime, BenchmarkGroup, Criterion};
 use goodmetrics::{
     allocator::AlwaysNewMetricsAllocator,
-    downstream::create_preaggregated_opentelemetry_batch,
+    downstream::OpentelemetryBatcher,
     pipeline::{Aggregator, DistributionMode, StreamSink},
     MetricsFactory,
 };
@@ -45,7 +45,7 @@ fn bench_distribution_mode(
     metrics_runtime.spawn(aggregator.aggregate_metrics_forever(
         Duration::from_secs(1),
         aggregated_batch_sender,
-        create_preaggregated_opentelemetry_batch,
+        OpentelemetryBatcher,
     ));
 
     for threads in [1, 4, 16] {

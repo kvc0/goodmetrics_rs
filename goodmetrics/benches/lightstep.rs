@@ -7,7 +7,7 @@ use goodmetrics::pipeline::StreamSink;
 use hyper::{header::HeaderName, http::HeaderValue};
 
 use goodmetrics::{
-    downstream::{create_preaggregated_opentelemetry_batch, get_channel, OpenTelemetryDownstream},
+    downstream::{get_channel, OpenTelemetryDownstream, OpentelemetryBatcher},
     pipeline::{Aggregator, DistributionMode},
     MetricsFactory,
 };
@@ -72,7 +72,7 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
                 aggregator.aggregate_metrics_forever(
                     Duration::from_secs(1),
                     aggregated_batch_sender,
-                    create_preaggregated_opentelemetry_batch
+                    OpentelemetryBatcher,
                 ),
                 downstream.send_batches_forever(receiver),
             );

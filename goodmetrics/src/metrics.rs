@@ -151,6 +151,8 @@ where
     }
 
     /// Record a sum. Repeated reports add together in this object.
+    ///
+    /// Aggregation: Locally summed per report period.
     #[inline]
     pub fn sum(&mut self, name: impl Into<Name>, value: impl Into<i64>) {
         let value = value.into();

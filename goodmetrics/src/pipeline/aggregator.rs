@@ -94,6 +94,24 @@ impl Default for TimeSource {
     }
 }
 
+/// A batcher for aggregated metrics.
+///
+/// You should usually drain the aggregations in the map. If they are not reset, the
+/// expectations of downstream senders might not match your implementation. If you have
+/// your own sender, this might make sense for you.
+pub trait AggregationBatcher {
+    /// Type of batch this batcher produces.
+    type TBatch;
+
+    /// Drain the aggregations into a batch.
+    fn batch_aggregations(
+        &mut self,
+        now: SystemTime,
+        covered_time: Duration,
+        aggregations: &mut AggregatedMetricsMap,
+    ) -> Self::TBatch;
+}
+
 /// Aggregates metrics and presents a pollable interface for creating batches of metrics.
 pub struct Aggregator<TMetricsRef> {
     metrics_queue: std::sync::mpsc::Receiver<TMetricsRef>,
@@ -145,13 +163,13 @@ where
 
     /// This task runs a lot. You might want to have a separate 1-2 thread runtime for metrics tasks.
     /// Note that this depends on tokio and the `time` feature.
-    pub async fn aggregate_metrics_forever<TMakeBatchFunction, TBatch>(
+    pub async fn aggregate_metrics_forever<TAggregationBatcher>(
         mut self,
         cadence: Duration,
-        sender: mpsc::Sender<TBatch>,
-        make_batch: TMakeBatchFunction,
+        sender: mpsc::Sender<TAggregationBatcher::TBatch>,
+        mut make_batch: TAggregationBatcher,
     ) where
-        TMakeBatchFunction: Fn(SystemTime, Duration, &mut AggregatedMetricsMap) -> TBatch,
+        TAggregationBatcher: AggregationBatcher,
     {
         // Try to align to some even column since the epoch. It helps make metrics better-aligned when systems have well-aligned clocks.
         // It's usually more convenient in grafana this way.
@@ -168,7 +186,7 @@ where
             self.receive_until_next_batch(last_emit, cadence).await;
 
             last_emit = self.now_timer();
-            if let Some(batch) = self.drain_into(self.now_wall_clock(), cadence, &make_batch) {
+            if let Some(batch) = self.drain_into(self.now_wall_clock(), cadence, &mut make_batch) {
                 match sender.try_send(batch) {
                     Ok(_) => {
                         log::info!("sent batch to sink")
@@ -219,20 +237,20 @@ where
     // your bread and butter metrics.
     // Just drain into your target type (for example, a metrics batch to send to a goodmetricsd server) within
     // the callback. Send the request outside of this scope.
-    fn drain_into<DrainFunction, TReturn>(
+    fn drain_into<TAggregationBatcher>(
         &mut self,
         timestamp: SystemTime,
         duration: Duration,
-        drain_into: &DrainFunction,
-    ) -> Option<TReturn>
+        batcher: &mut TAggregationBatcher,
+    ) -> Option<TAggregationBatcher::TBatch>
     where
-        DrainFunction: Fn(SystemTime, Duration, &mut AggregatedMetricsMap) -> TReturn,
+        TAggregationBatcher: AggregationBatcher,
     {
         if self.map.is_empty() {
             return None;
         }
 
-        Some(drain_into(timestamp, duration, &mut self.map))
+        Some(batcher.batch_aggregations(timestamp, duration, &mut self.map))
     }
 
     fn aggregate_metrics(&mut self, mut sunk_metrics: TMetricsRef) {
@@ -440,7 +458,21 @@ mod test {
         types::{Dimension, Name, Observation},
     };
 
-    use super::DimensionedMeasurementsMap;
+    use super::{AggregationBatcher, DimensionedMeasurementsMap};
+
+    struct TestAggregationBatcher;
+    impl AggregationBatcher for TestAggregationBatcher {
+        type TBatch = Vec<(Name, DimensionedMeasurementsMap)>;
+
+        fn batch_aggregations(
+            &mut self,
+            _now: SystemTime,
+            _covered_time: Duration,
+            aggregations: &mut super::AggregatedMetricsMap,
+        ) -> Self::TBatch {
+            aggregations.drain().collect()
+        }
+    }
 
     #[test_log::test(tokio::test())]
     async fn test_aggregation() {
@@ -505,7 +537,7 @@ mod test {
             .drain_into(
                 SystemTime::now(),
                 Duration::from_secs(1),
-                &|_, _, aggregated| aggregated.drain().collect(),
+                &mut TestAggregationBatcher,
             )
             .expect("there should be contents in the batch");
         assert_eq!(

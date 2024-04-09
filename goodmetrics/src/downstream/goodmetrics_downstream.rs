@@ -10,7 +10,7 @@ use crate::{
         AbsorbDistribution, Aggregation, Centroid, ExponentialHistogram, Histogram, OnlineTdigest,
         StatisticSet,
     },
-    pipeline::{AggregatedMetricsMap, DimensionedMeasurementsMap},
+    pipeline::{AggregatedMetricsMap, AggregationBatcher, DimensionedMeasurementsMap},
     proto::{
         self,
         goodmetrics::{metrics_client::MetricsClient, Datum, MetricsRequest},
@@ -84,17 +84,24 @@ where
 }
 
 /// The default mapping from in-memory representation to goodmetrics wire representation
-pub fn create_preaggregated_goodmetrics_batch(
-    timestamp: SystemTime,
-    duration: Duration,
-    batch: &mut AggregatedMetricsMap,
-) -> Vec<Datum> {
-    batch
-        .drain()
-        .flat_map(|(name, dimensioned_measurements)| {
-            as_datums(name, timestamp, duration, dimensioned_measurements)
-        })
-        .collect()
+pub struct GoodmetricsBatcher;
+
+impl AggregationBatcher for GoodmetricsBatcher {
+    type TBatch = Vec<Datum>;
+
+    fn batch_aggregations(
+        &mut self,
+        now: SystemTime,
+        covered_time: Duration,
+        aggregations: &mut AggregatedMetricsMap,
+    ) -> Self::TBatch {
+        aggregations
+            .drain()
+            .flat_map(|(name, dimensioned_measurements)| {
+                as_datums(name, now, covered_time, dimensioned_measurements)
+            })
+            .collect()
+    }
 }
 
 fn as_datums(

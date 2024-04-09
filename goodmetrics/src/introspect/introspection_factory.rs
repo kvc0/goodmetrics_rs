@@ -1,14 +1,11 @@
-use std::{
-    sync::Arc,
-    time::{Duration, SystemTime},
-};
+use std::{sync::Arc, time::Duration};
 
 use arc_swap::ArcSwapOption;
 use tokio::{select, sync::mpsc};
 
 use crate::{
     allocator::AlwaysNewMetricsAllocator,
-    pipeline::{AggregatedMetricsMap, Aggregator, DistributionMode, StreamSink},
+    pipeline::{AggregationBatcher, Aggregator, DistributionMode, StreamSink},
     Metrics, MetricsFactory,
 };
 
@@ -17,16 +14,19 @@ static INTROSPECTION_METRICS_FACTORY: ArcSwapOption<
 > = ArcSwapOption::const_empty();
 
 /// Configuration for introspection metrics
-pub struct IntrospectionConfiguration<TBatch, TMakeBatchFunction> {
+pub struct IntrospectionConfiguration<TAggregationBatcher: AggregationBatcher> {
     distribution_mode: DistributionMode,
     cadence: Duration,
-    sender: mpsc::Sender<TBatch>,
-    make_batch: TMakeBatchFunction,
+    sender: mpsc::Sender<TAggregationBatcher::TBatch>,
+    batcher: TAggregationBatcher,
 }
 
-impl<TBatch, TMakeBatchFunction> IntrospectionConfiguration<TBatch, TMakeBatchFunction> {
+impl<TAggregationBatcher: AggregationBatcher> IntrospectionConfiguration<TAggregationBatcher> {
     /// Create a configuration for introspection metrics
-    pub fn new(sender: mpsc::Sender<TBatch>, make_batch: TMakeBatchFunction) -> Self {
+    pub fn new(
+        sender: mpsc::Sender<TAggregationBatcher::TBatch>,
+        batcher: TAggregationBatcher,
+    ) -> Self {
         Self {
             distribution_mode: DistributionMode::ExponentialHistogram {
                 max_buckets: 160,
@@ -34,7 +34,7 @@ impl<TBatch, TMakeBatchFunction> IntrospectionConfiguration<TBatch, TMakeBatchFu
             },
             cadence: Duration::from_secs(15),
             sender,
-            make_batch,
+            batcher,
         }
     }
 
@@ -51,12 +51,11 @@ impl<TBatch, TMakeBatchFunction> IntrospectionConfiguration<TBatch, TMakeBatchFu
 
 /// Spawn on a tokio runtime. This registers pipeline introspection
 /// metrics to be emitted through the configured downstream sink.
-pub async fn run_introspection_metrics<TBatch, TMakeBatchFunction>(
-    configuration: IntrospectionConfiguration<TBatch, TMakeBatchFunction>,
+pub async fn run_introspection_metrics<TAggregationBatcher>(
+    configuration: IntrospectionConfiguration<TAggregationBatcher>,
 ) where
-    TMakeBatchFunction:
-        Fn(SystemTime, Duration, &mut AggregatedMetricsMap) -> TBatch + Send + 'static + Copy,
-    TBatch: Send + 'static,
+    TAggregationBatcher: AggregationBatcher + Clone,
+    TAggregationBatcher::TBatch: Send,
 {
     let (sink, receiver) = StreamSink::new();
     let aggregator = Aggregator::new(receiver, configuration.distribution_mode);
@@ -68,12 +67,12 @@ pub async fn run_introspection_metrics<TBatch, TMakeBatchFunction>(
     let gauge_future = metrics_factory.clone().report_gauges_forever(
         configuration.cadence,
         configuration.sender.clone(),
-        configuration.make_batch,
+        configuration.batcher.clone(),
     );
     let aggregator_future = aggregator.aggregate_metrics_forever(
         configuration.cadence,
         configuration.sender,
-        configuration.make_batch,
+        configuration.batcher,
     );
 
     INTROSPECTION_METRICS_FACTORY.store(Some(metrics_factory));

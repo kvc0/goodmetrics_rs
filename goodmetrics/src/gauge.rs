@@ -157,7 +157,7 @@ impl GaugeDimensions {
     /// Create a new GaugeDimensions
     ///
     /// ```
-    /// # use goodmetrics::gauge::GaugeDimensions;
+    /// # use goodmetrics::GaugeDimensions;
     /// GaugeDimensions::new([("a", "dimension"), ("another", "dimension")]);
     /// ```
     pub fn new(
@@ -176,7 +176,7 @@ impl GaugeDimensions {
     /// Can be chained for successive inserts.
     ///
     /// ```
-    /// use goodmetrics::gauge::GaugeDimensions;
+    /// use goodmetrics::GaugeDimensions;
     ///
     /// let mut dimensions = GaugeDimensions::default();
     /// dimensions.insert("a", "dimension");

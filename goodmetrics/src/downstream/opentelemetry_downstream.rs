@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     aggregation::Sum,
+    pipeline::AggregationBatcher,
     proto::opentelemetry::{metrics::v1::Gauge, resource::v1::Resource},
 };
 use crate::{
@@ -117,17 +118,24 @@ where
 }
 
 /// The default mapping from in-memory representation to opentelemetry metrics wire representation
-pub fn create_preaggregated_opentelemetry_batch(
-    timestamp: SystemTime,
-    duration: Duration,
-    batch: &mut AggregatedMetricsMap,
-) -> Vec<Metric> {
-    batch
-        .drain()
-        .flat_map(|(name, dimensioned_measurements)| {
-            as_metrics(name, timestamp, duration, dimensioned_measurements)
-        })
-        .collect()
+pub struct OpentelemetryBatcher;
+
+impl AggregationBatcher for OpentelemetryBatcher {
+    type TBatch = Vec<Metric>;
+
+    fn batch_aggregations(
+        &mut self,
+        now: SystemTime,
+        covered_time: Duration,
+        aggregations: &mut AggregatedMetricsMap,
+    ) -> Self::TBatch {
+        aggregations
+            .drain()
+            .flat_map(|(name, dimensioned_measurements)| {
+                as_metrics(name, now, covered_time, dimensioned_measurements)
+            })
+            .collect()
+    }
 }
 
 fn as_metrics(
@@ -509,9 +517,7 @@ mod test {
     use crate::{
         downstream::{
             channel_connection::get_channel,
-            opentelemetry_downstream::{
-                create_preaggregated_opentelemetry_batch, OpenTelemetryDownstream,
-            },
+            opentelemetry_downstream::{OpenTelemetryDownstream, OpentelemetryBatcher},
         },
         metrics::Metrics,
         pipeline::{Aggregator, DistributionMode, StreamSink},
@@ -535,7 +541,7 @@ mod test {
         let aggregator_handle = metrics_tasks.spawn_local(aggregator.aggregate_metrics_forever(
             Duration::from_millis(10),
             batch_sender,
-            create_preaggregated_opentelemetry_batch,
+            OpentelemetryBatcher,
         ));
         let downstream_joiner = metrics_tasks
             .spawn_local(async move { downstream.send_batches_forever(batch_receiver).await });
