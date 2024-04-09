@@ -9,6 +9,7 @@ use std::{
 use tokio::sync::mpsc;
 
 use crate::{
+    aggregation::Sum,
     allocator::MetricsRef,
     types::{self, Dimension, Measurement, Name},
 };
@@ -290,6 +291,7 @@ where
                         desired_scale,
                     ),
                 },
+                Measurement::Sum(sum) => accumulate_sum(measurements_map, name, sum),
             });
     }
 
@@ -323,6 +325,9 @@ fn accumulate_histogram(
         Aggregation::Histogram(histogram) => histogram.absorb(distribution),
         Aggregation::TDigest(td) => td.absorb(distribution),
         Aggregation::ExponentialHistogram(eh) => eh.absorb(distribution),
+        Aggregation::Sum(_sum) => {
+            log::error!("conflicting measurement and distribution name")
+        }
     }
 }
 
@@ -345,6 +350,9 @@ fn accumulate_exponential_histogram(
         Aggregation::Histogram(histogram) => histogram.absorb(distribution),
         Aggregation::TDigest(td) => td.absorb(distribution),
         Aggregation::ExponentialHistogram(eh) => eh.absorb(distribution),
+        Aggregation::Sum(_sum) => {
+            log::error!("conflicting measurement and distribution name")
+        }
     }
 }
 
@@ -363,6 +371,9 @@ fn accumulate_tdigest(
         Aggregation::Histogram(histogram) => histogram.absorb(distribution),
         Aggregation::TDigest(td) => td.absorb(distribution),
         Aggregation::ExponentialHistogram(eh) => eh.absorb(distribution),
+        Aggregation::Sum(_sum) => {
+            log::error!("conflicting measurement and distribution name")
+        }
     }
 }
 
@@ -385,6 +396,30 @@ fn accumulate_statisticset(
         Aggregation::ExponentialHistogram(_eh) => {
             log::error!("conflicting measurement and distribution name")
         }
+        Aggregation::Sum(_sum) => {
+            log::error!("conflicting measurement and distribution name")
+        }
+    }
+}
+
+fn accumulate_sum(measurements_map: &mut HashMap<Name, Aggregation>, name: Name, value: i64) {
+    match measurements_map
+        .entry(name)
+        .or_insert_with(|| Aggregation::Sum(Sum::default()))
+    {
+        Aggregation::StatisticSet(_statistic_set) => {
+            log::error!("conflicting measurement and distribution name")
+        }
+        Aggregation::Histogram(_h) => {
+            log::error!("conflicting measurement and distribution name")
+        }
+        Aggregation::TDigest(_td) => {
+            log::error!("conflicting measurement and distribution name")
+        }
+        Aggregation::ExponentialHistogram(_eh) => {
+            log::error!("conflicting measurement and distribution name")
+        }
+        Aggregation::Sum(sum) => sum.accumulate(value),
     }
 }
 

@@ -150,6 +150,22 @@ where
             .insert(name.into(), Measurement::Distribution(value.into()));
     }
 
+    /// Record a sum. Repeated reports add together in this object.
+    #[inline]
+    pub fn sum(&mut self, name: impl Into<Name>, value: impl Into<i64>) {
+        let value = value.into();
+        self.measurements
+            .entry(name.into())
+            .and_modify(|measurement| match measurement {
+                Measurement::Observation(_) => log::error!("mismatched measurement - expected sum"),
+                Measurement::Distribution(_) => {
+                    log::error!("mismatched measurement - expected sum")
+                }
+                Measurement::Sum(s) => *s += value,
+            })
+            .or_insert(Measurement::Sum(value));
+    }
+
     /// Record a time distribution in nanoseconds.
     /// Check out t-digests if you're using a goodmetrics + timescale downstream.
     ///

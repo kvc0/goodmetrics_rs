@@ -6,15 +6,14 @@ use std::{
 
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
-use crate::gauge::GaugeDimensions;
 use crate::{
     allocator::{MetricsAllocator, MetricsRef, ReturnTarget, ReturningRef},
-    gauge::StatisticSetGauge,
     gauge_group::GaugeGroup,
     metrics::MetricsBehavior,
     pipeline::{AggregatedMetricsMap, Sink},
     types::Name,
 };
+use crate::{gauge::GaugeDimensions, Gauge};
 
 /// Example complete preaggregated metrics pipeline setup, with gauge support:
 ///
@@ -199,31 +198,61 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
     /// but their registration and lifecycle are governed by Mutex.
     ///
     /// Gauges are less flexible than Metrics, but they can enable convenient high frequency recording.
-    pub fn gauge(
+    pub fn gauge_statistic_set(
         &self,
         gauge_group: impl Into<Name>,
         gauge_name: impl Into<Name>,
-    ) -> Arc<StatisticSetGauge> {
-        self.dimensioned_gauge(gauge_group, gauge_name, Default::default())
+    ) -> Arc<Gauge> {
+        self.dimensioned_gauge_statistic_set(gauge_group, gauge_name, Default::default())
     }
 
     /// Get a gauge within a group, of a particular name, with specified dimensions.
-    pub fn dimensioned_gauge(
+    pub fn dimensioned_gauge_statistic_set(
         &self,
         gauge_group: impl Into<Name>,
         gauge_name: impl Into<Name>,
         gauge_dimensions: GaugeDimensions,
-    ) -> Arc<StatisticSetGauge> {
+    ) -> Arc<Gauge> {
+        self.get_gauge(
+            gauge_group,
+            gauge_name,
+            gauge_dimensions,
+            crate::gauge::statistic_set_gauge,
+        )
+    }
+
+    /// Get a gauge within a group, of a particular name, with specified dimensions.
+    pub fn dimensioned_gauge_sum(
+        &self,
+        gauge_group: impl Into<Name>,
+        gauge_name: impl Into<Name>,
+        gauge_dimensions: GaugeDimensions,
+    ) -> Arc<Gauge> {
+        self.get_gauge(
+            gauge_group,
+            gauge_name,
+            gauge_dimensions,
+            crate::gauge::sum_gauge,
+        )
+    }
+
+    fn get_gauge(
+        &self,
+        gauge_group: impl Into<Name>,
+        gauge_name: impl Into<Name>,
+        gauge_dimensions: GaugeDimensions,
+        default: fn() -> Gauge,
+    ) -> Arc<Gauge> {
         let mut locked_groups = self
             .gauge_groups
             .lock()
             .expect("local mutex should not be poisoned");
         let gauge_group = gauge_group.into();
         match locked_groups.get_mut(&gauge_group) {
-            Some(group) => group.dimensioned_gauge(gauge_name, gauge_dimensions.into()),
+            Some(group) => group.dimensioned_gauge(gauge_name, gauge_dimensions.into(), default),
             None => {
                 let mut group = GaugeGroup::default();
-                let gauge = group.dimensioned_gauge(gauge_name, gauge_dimensions.into());
+                let gauge = group.dimensioned_gauge(gauge_name, gauge_dimensions.into(), default);
                 locked_groups.insert(gauge_group, group);
                 gauge
             }
@@ -427,26 +456,28 @@ mod test {
         let metrics_factory: Arc<MetricsFactory<AlwaysNewMetricsAllocator, DropSink>> =
             Arc::new(MetricsFactory::new(DropSink));
 
-        let _unused_gauge_group = metrics_factory.gauge("unused_gauge_group", "unused_gauge");
-        let non_dimensioned_gauge = metrics_factory.gauge("test_gauges", "non_dimensioned_gauge");
+        let _unused_gauge_group =
+            metrics_factory.gauge_statistic_set("unused_gauge_group", "unused_gauge");
+        let non_dimensioned_gauge =
+            metrics_factory.gauge_statistic_set("test_gauges", "non_dimensioned_gauge");
         let mut dimensions = GaugeDimensions::new([("test", "dimension")]);
         dimensions.insert("other", 1_u32);
-        let dimensioned_gauge_one = metrics_factory.dimensioned_gauge(
+        let dimensioned_gauge_one = metrics_factory.dimensioned_gauge_statistic_set(
             "test_dimensioned_gauges",
             "dimensioned_gauge_one",
             dimensions.clone(),
         );
-        let dimensioned_gauge_two = metrics_factory.dimensioned_gauge(
+        let dimensioned_gauge_two = metrics_factory.dimensioned_gauge_statistic_set(
             "test_dimensioned_gauges",
             "dimensioned_gauge_two",
             dimensions.clone(),
         );
-        let _unused_gauge_in_gauge_group = metrics_factory.dimensioned_gauge(
+        let _unused_gauge_in_gauge_group = metrics_factory.dimensioned_gauge_statistic_set(
             "test_dimensioned_gauges",
             "unused_gauge",
             GaugeDimensions::new([("unused", "dimension")]),
         );
-        let _unused_gauge_with_same_dimensions = metrics_factory.dimensioned_gauge(
+        let _unused_gauge_with_same_dimensions = metrics_factory.dimensioned_gauge_statistic_set(
             "test_dimensioned_gauges",
             "unused_gauge",
             dimensions,

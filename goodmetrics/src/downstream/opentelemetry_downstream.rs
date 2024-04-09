@@ -6,7 +6,10 @@ use std::{
 
 use tokio::sync::mpsc;
 
-use crate::proto::opentelemetry::{metrics::v1::Gauge, resource::v1::Resource};
+use crate::{
+    aggregation::Sum,
+    proto::opentelemetry::{metrics::v1::Gauge, resource::v1::Resource},
+};
 use crate::{
     aggregation::{bucket_10_below_2_sigfigs, Aggregation, StatisticSet},
     pipeline::{DimensionPosition, DimensionedMeasurementsMap},
@@ -18,7 +21,7 @@ use crate::{
         common::v1::{any_value::Value, AnyValue, InstrumentationScope, KeyValue},
         metrics::v1::{
             AggregationTemporality, DataPointFlags, HistogramDataPoint, Metric, ResourceMetrics,
-            ScopeMetrics, Sum,
+            ScopeMetrics,
         },
     },
     types::{Dimension, Name},
@@ -174,6 +177,13 @@ fn as_metrics(
                         duration,
                         &otel_dimensions,
                     ),
+                    Aggregation::Sum(s) => vec![as_otel_sum(
+                        s,
+                        &format!("{name}_{measurement_name}"),
+                        timestamp,
+                        duration,
+                        &otel_dimensions,
+                    )],
                     Aggregation::TDigest(_) => {
                         unimplemented!("tdigest for opentelemetry is not implemented")
                     }
@@ -258,6 +268,41 @@ fn as_otel_statistic_set(
     ]
 }
 
+fn as_otel_sum(
+    sum: Sum,
+    full_measurement_name: &str,
+    timestamp: SystemTime,
+    duration: Duration,
+    attributes: &[KeyValue],
+) -> opentelemetry::metrics::v1::Metric {
+    let timestamp_nanos = timestamp
+        .duration_since(UNIX_EPOCH)
+        .expect("could not get system time")
+        .as_nanos() as u64;
+    let start_nanos = timestamp_nanos - duration.as_nanos() as u64;
+
+    Metric {
+        name: full_measurement_name.to_string(),
+        data: Some(opentelemetry::metrics::v1::metric::Data::Sum(
+            opentelemetry::metrics::v1::Sum {
+                aggregation_temporality: THE_ACTUAL_TEMPORALITY,
+                // This resets every aggregation interval.
+                // It might not play very nicely with prometheus, but goodmetrics does not limit
+                // to the lowest common monitoring denominator.
+                is_monotonic: true,
+                data_points: vec![new_number_data_point(
+                    timestamp_nanos,
+                    start_nanos,
+                    attributes,
+                    sum.sum.into(),
+                )],
+            },
+        )),
+        description: "".into(),
+        unit: "1".into(),
+    }
+}
+
 impl From<i64> for opentelemetry::metrics::v1::number_data_point::Value {
     fn from(i: i64) -> Self {
         Self::AsInt(i)
@@ -287,19 +332,21 @@ fn statistic_set_counter_component(
 ) -> opentelemetry::metrics::v1::Metric {
     Metric {
         name: format!("{full_measurement_name}_{component}"),
-        data: Some(opentelemetry::metrics::v1::metric::Data::Sum(Sum {
-            aggregation_temporality: THE_ACTUAL_TEMPORALITY,
-            // This resets every aggregation interval.
-            // It might not play very nicely with prometheus, but goodmetrics does not limit
-            // to the lowest common monitoring denominator.
-            is_monotonic: true,
-            data_points: vec![new_number_data_point(
-                unix_nanos,
-                start_time_unix_nanos,
-                attributes,
-                value,
-            )],
-        })),
+        data: Some(opentelemetry::metrics::v1::metric::Data::Sum(
+            opentelemetry::metrics::v1::Sum {
+                aggregation_temporality: THE_ACTUAL_TEMPORALITY,
+                // This resets every aggregation interval.
+                // It might not play very nicely with prometheus, but goodmetrics does not limit
+                // to the lowest common monitoring denominator.
+                is_monotonic: true,
+                data_points: vec![new_number_data_point(
+                    unix_nanos,
+                    start_time_unix_nanos,
+                    attributes,
+                    value,
+                )],
+            },
+        )),
         description: "".into(),
         unit: "1".into(),
     }

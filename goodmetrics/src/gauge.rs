@@ -4,7 +4,7 @@ use std::{
     time::Instant,
 };
 
-use crate::aggregation::StatisticSet;
+use crate::aggregation::{StatisticSet, Sum};
 use crate::pipeline::DimensionPosition;
 use crate::types::{Dimension, Name};
 
@@ -27,15 +27,54 @@ pub struct StatisticSetGauge {
     max: AtomicI64,
 }
 
+/// A gauge is a compromise for high throughput metrics. Sometimes you can't afford to
+/// allocate a Metrics object to record something, and you can let go of some detail
+/// to still be able to record some information. This is the compromise a Gauge allows.
+///
+/// Gauges are not transactional - you might chop a report just a little bit. If you're
+/// using a gauge, you probably require non-blocking behavior more than you require
+/// perfect happens-befores in your dashboard data.
+#[derive(Debug)]
+pub struct SumGauge {
+    sum: AtomicI64,
+}
+
+/// A gauge is a compromise for high throughput metrics. Sometimes you can't afford to
+/// allocate a Metrics object to record something, and you can let go of some detail
+/// to still be able to record some information. This is the compromise a Gauge allows.
+///
+/// Gauges are not transactional - you might chop a report just a little bit. If you're
+/// using a gauge, you probably require non-blocking behavior more than you require
+/// perfect happens-befores in your dashboard data.
+pub enum Gauge {
+    /// A statisticset gauge
+    StatisticSet(StatisticSetGauge),
+    /// A sum gauge
+    Sum(SumGauge),
+}
+
+impl Gauge {
+    /// Observe a value of a gauge.
+    ///
+    /// This never blocks. Internal mutability is achieved via platform atomics.
+    #[inline]
+    pub fn observe(&self, value: impl Into<i64>) {
+        match self {
+            Gauge::StatisticSet(ss) => ss.observe(value),
+            Gauge::Sum(s) => s.observe(value),
+        }
+    }
+}
+
 const ORDERING: std::sync::atomic::Ordering = std::sync::atomic::Ordering::Relaxed;
 
-pub(crate) fn statistic_set_gauge() -> StatisticSetGauge {
-    StatisticSetGauge {
+pub(crate) fn statistic_set_gauge() -> Gauge {
+    Gauge::StatisticSet(StatisticSetGauge {
         count: AtomicU64::new(0),
         sum: AtomicI64::new(0),
         min: AtomicI64::new(i64::MAX),
         max: AtomicI64::new(i64::MIN),
-    }
+    })
 }
 
 impl StatisticSetGauge {
@@ -59,9 +98,7 @@ impl StatisticSetGauge {
         let value = value.elapsed().as_micros() as i64;
         self.observe(value)
     }
-}
 
-impl StatisticSetGauge {
     /// Takes a dirty snapshot of the gauge without locking.
     /// This is susceptible to toctou, and the intent is to only have 1 thread
     /// calling reset() as part of metrics reporting.
@@ -77,6 +114,35 @@ impl StatisticSetGauge {
             sum: self.sum.fetch_sub(sum, ORDERING),
             count: self.count.fetch_sub(count, ORDERING),
         })
+    }
+}
+
+pub(crate) fn sum_gauge() -> Gauge {
+    Gauge::Sum(SumGauge {
+        sum: AtomicI64::new(0),
+    })
+}
+
+impl SumGauge {
+    /// Observe a value of a gauge explicitly.
+    ///
+    /// This never blocks. Internal mutability is achieved via platform atomics.
+    #[inline]
+    pub fn observe(&self, count: impl Into<i64>) {
+        self.sum.fetch_add(count.into(), ORDERING);
+    }
+
+    /// Takes a dirty snapshot of the gauge without locking.
+    /// This is susceptible to toctou, and the intent is to only have 1 thread
+    /// calling reset() as part of metrics reporting.
+    pub fn reset(&self) -> Option<Sum> {
+        let sum = self.sum.swap(0, ORDERING);
+
+        if sum == 0 {
+            return None;
+        }
+
+        Some(Sum { sum })
     }
 }
 

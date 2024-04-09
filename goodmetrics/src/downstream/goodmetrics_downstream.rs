@@ -151,6 +151,7 @@ impl From<Aggregation> for proto::goodmetrics::Measurement {
                 Aggregation::StatisticSet(statistic_set) => {
                     proto::goodmetrics::measurement::Value::StatisticSet(statistic_set.into())
                 }
+                Aggregation::Sum(sum) => proto::goodmetrics::measurement::Value::I64(sum.sum),
                 Aggregation::TDigest(t_digest) => {
                     proto::goodmetrics::measurement::Value::Tdigest(t_digest.into())
                 }
@@ -179,6 +180,7 @@ impl From<Measurement> for proto::goodmetrics::Measurement {
             value: Some(match value {
                 Measurement::Observation(observation) => observation.into(),
                 Measurement::Distribution(distribution) => distribution.into(),
+                Measurement::Sum(sum) => proto::goodmetrics::measurement::Value::I64(sum),
             }),
         }
     }

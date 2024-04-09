@@ -3,18 +3,14 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use crate::aggregation::Aggregation;
 use crate::pipeline::{DimensionedMeasurementsMap, MeasurementAggregationMap};
-use crate::{
-    gauge::{self, StatisticSetGauge},
-    pipeline::DimensionPosition,
-    types::Name,
-};
+use crate::{aggregation::Aggregation, Gauge};
+use crate::{pipeline::DimensionPosition, types::Name};
 
 /// Gauges grouped by a shared dimension position
 #[derive(Default)]
 pub struct GaugeGroup {
-    dimensioned_gauges: HashMap<DimensionPosition, HashMap<Name, Weak<StatisticSetGauge>>>,
+    dimensioned_gauges: HashMap<DimensionPosition, HashMap<Name, Weak<Gauge>>>,
 }
 
 impl GaugeGroup {
@@ -23,20 +19,21 @@ impl GaugeGroup {
         &mut self,
         name: impl Into<Name>,
         dimensions: DimensionPosition,
-    ) -> Arc<StatisticSetGauge> {
+        default: fn() -> Gauge,
+    ) -> Arc<Gauge> {
         let name = name.into();
         let gauge_position = self.dimensioned_gauges.entry(dimensions).or_default();
         match gauge_position.get(&name) {
             Some(existing) => match existing.upgrade() {
                 Some(existing) => existing,
                 None => {
-                    let gauge: Arc<StatisticSetGauge> = Arc::new(gauge::statistic_set_gauge());
+                    let gauge: Arc<Gauge> = Arc::new(default());
                     gauge_position.insert(name, Arc::downgrade(&gauge));
                     gauge
                 }
             },
             None => {
-                let gauge: Arc<StatisticSetGauge> = Arc::new(gauge::statistic_set_gauge());
+                let gauge: Arc<Gauge> = Arc::new(default());
                 gauge_position.insert(name, Arc::downgrade(&gauge));
                 gauge
             }
@@ -59,9 +56,13 @@ impl GaugeGroup {
                     .filter_map(|(name, possible_gauge)| {
                         possible_gauge
                             .upgrade()
-                            .and_then(|gauge| gauge.reset())
-                            .map(|statistic_set| {
-                                (name.to_owned(), Aggregation::StatisticSet(statistic_set))
+                            .and_then(|gauge| match gauge.as_ref() {
+                                Gauge::StatisticSet(gauge) => gauge.reset().map(|statistic_set| {
+                                    (name.to_owned(), Aggregation::StatisticSet(statistic_set))
+                                }),
+                                Gauge::Sum(gauge) => gauge
+                                    .reset()
+                                    .map(|sum| (name.to_owned(), Aggregation::Sum(sum))),
                             })
                     })
                     .collect();

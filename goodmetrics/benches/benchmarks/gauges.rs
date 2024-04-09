@@ -20,7 +20,7 @@ pub fn gauges(criterion: &mut Criterion) {
     let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, DropSink> =
         MetricsFactory::new(DropSink);
 
-    let cached_gauge = metrics_factory.gauge("contention", "is okay");
+    let cached_gauge = metrics_factory.gauge_statistic_set("contention", "is okay");
 
     for threads in [1, 2, 4, 8, 16] {
         group.bench_function(format!("concurrency-{threads:02}"), |bencher| {

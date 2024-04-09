@@ -90,6 +90,8 @@ pub enum Measurement {
     Observation(Observation),
     /// A value to be grouped into a distribution
     Distribution(Distribution),
+    /// An accumulating number
+    Sum(i64),
 }
 
 /// Individual values

@@ -1,6 +1,6 @@
 use std::cmp::{max, min};
 
-/// The most basic aggregation.
+/// A basic aggregation.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct StatisticSet {
     /// Minimum observed value

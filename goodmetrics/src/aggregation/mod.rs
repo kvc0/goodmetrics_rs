@@ -5,6 +5,7 @@ mod exponential_histogram;
 mod histogram;
 mod online_tdigest;
 mod statistic_set;
+mod sum;
 #[allow(clippy::unwrap_used, unused)]
 mod tdigest;
 
@@ -13,6 +14,7 @@ pub use exponential_histogram::ExponentialHistogram;
 pub use histogram::Histogram;
 pub use online_tdigest::OnlineTdigest;
 pub use statistic_set::StatisticSet;
+pub use sum::Sum;
 pub use tdigest::{Centroid, TDigest};
 
 use crate::types::Distribution;
@@ -23,6 +25,8 @@ use crate::types::Distribution;
 /// For collecting and periodically reporting
 #[derive(Debug, Clone)]
 pub enum Aggregation {
+    /// A sum
+    Sum(Sum),
     /// An exponential histogram aggregation
     ExponentialHistogram(ExponentialHistogram),
     /// A tenths-of-base-10 histogram aggregation
