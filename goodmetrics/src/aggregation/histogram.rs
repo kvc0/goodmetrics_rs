@@ -13,8 +13,11 @@ impl Histogram {
     /// Add 1 to the value's bucket
     pub fn accumulate<T: Into<i64>>(&mut self, value: T) {
         let v = value.into();
-        let b = bucket_10_2_sigfigs(v);
-        self.histogram.insert(b, self.histogram[&b] + 1);
+        let bucket = bucket_10_2_sigfigs(v);
+        self.histogram
+            .entry(bucket)
+            .and_modify(|b| *b += 1)
+            .or_insert(1);
     }
 
     /// Consume this histogram into a map of threshold -> count
