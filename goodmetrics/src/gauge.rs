@@ -46,6 +46,7 @@ pub struct SumGauge {
 /// Gauges are not transactional - you might chop a report just a little bit. If you're
 /// using a gauge, you probably require non-blocking behavior more than you require
 /// perfect happens-befores in your dashboard data.
+#[derive(Debug)]
 pub enum Gauge {
     /// A statisticset gauge
     StatisticSet(StatisticSetGauge),
