@@ -97,7 +97,8 @@ Adds up all the sum calls for "name" within each reporting period.
 #### `let _guard = metrics.time("name")`
 
 * For measuring how long something takes within the given scope of code.
-* Generates a `Histogram` or `ExponentialHistogram` of latency values in nanoseconds, depending on configuration.
+* Aggregates locally into `Histogram` or `ExponentialHistogram`, depending on configuration.
+* Unit for timers is nanoseconds.
 
 ## Development
 
