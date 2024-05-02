@@ -85,7 +85,7 @@ A basic knowledge of [OpenTelemetry metric types](https://opentelemetry.io/docs/
 #### `metrics.distribution("name", value)`
 
 * Useful for identifying percentiles of data, like the 99th percentile of request sizes.
-* Generates a `Histogram` or `ExponentialHistogram` depending on configuration.
+* Aggregates locally into a `Histogram` or `ExponentialHistogram` depending on configuration.
 
 #### `metrics.sum("name", value)`
 
