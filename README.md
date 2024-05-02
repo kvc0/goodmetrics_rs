@@ -89,8 +89,10 @@ A basic knowledge of [OpenTelemetry metric types](https://opentelemetry.io/docs/
 
 #### `metrics.sum("name", value)`
 
-* Useful for tracking a simple counter such as bytes stored on disk, or number of tokens consumed.
-* Generates a `Gauge`
+Adds up all the sum calls for "name" within each reporting period.
+
+* Useful for tracking a counter such as bytes stored on disk, or number of tokens consumed.
+* Aggregates locally into a `Sum`.
 
 #### `metrics.time("name")`
 
