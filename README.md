@@ -73,8 +73,6 @@ match result {
 
 Latest docs can always be found on [docs.rs](https://docs.rs/goodmetrics/latest/goodmetrics/).
 
-A basic knowledge of [OpenTelemetry metric types](https://opentelemetry.io/docs/specs/otel/metrics/data-model/#metric-points) is expected, but a shortened guide can be summarized below:
-
 #### `metrics.measurement("name", value)`
 
 * Use when you only need `min`, `max`, `sum`, and `count` of data points received.
