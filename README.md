@@ -94,7 +94,7 @@ Adds up all the sum calls for "name" within each reporting period.
 * Useful for tracking a counter such as bytes stored on disk, or number of tokens consumed.
 * Aggregates locally into a `Sum`.
 
-#### `metrics.time("name")`
+#### `let _guard = metrics.time("name")`
 
 * For measuring how long something takes within the given scope of code.
 * Generates a `Histogram` or `ExponentialHistogram` of latency values in nanoseconds, depending on configuration.
