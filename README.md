@@ -77,8 +77,10 @@ A basic knowledge of [OpenTelemetry metric types](https://opentelemetry.io/docs/
 
 #### `metrics.measurement("name", value)`
 
-* Use when your aggregation of data requires things like the `min`, `max`, `sum`, and `count` of data points received.
-* Generates a `StatisticsSet`
+* Use when you only need `min`, `max`, `sum`, and `count` of data points received.
+* Use `sum()` instead if you only need `sum` or `count`.
+* Use `distribution()` instead if you need percentiles of values.
+* Aggregates locally into a `StatisticsSet`
 
 #### `metrics.distribution("name", value)`
 
