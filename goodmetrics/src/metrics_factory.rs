@@ -145,8 +145,19 @@ where
     }
 
     /// The MetricsScope, when completed, records a `totaltime` in nanoseconds.
-    #[allow(unused)]
-    pub(crate) fn record_scope_owned(
+    ///
+    /// Use this when you need an owned Metrics object - for example, to write a metrics Interceptor for a tonic service.
+    ///
+    /// ```
+    /// # use goodmetrics::{MetricsFactory, Metrics, allocator::{AlwaysNewMetricsAllocator, ReturningRef}, pipeline::StreamSink};
+    /// # use std::sync::Arc;
+    /// type MetricsFactoryType = Arc<MetricsFactory<AlwaysNewMetricsAllocator, StreamSink<Metrics>>>;
+    ///
+    /// fn get_metrics(shared_factory: MetricsFactoryType) -> ReturningRef<Metrics, MetricsFactoryType> {
+    ///     shared_factory.record_scope_owned("returned from a locally owned factory")
+    /// }
+    /// ```
+    pub fn record_scope_owned(
         self: Arc<Self>,
         scope_name: impl Into<Name>,
     ) -> ReturningRef<TMetricsAllocator::TMetricsRef, Arc<Self>> {
