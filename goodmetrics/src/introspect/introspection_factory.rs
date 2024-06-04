@@ -1,17 +1,14 @@
 use std::{sync::Arc, time::Duration};
 
 use arc_swap::ArcSwapOption;
-use tokio::{select, sync::mpsc};
+use tokio::sync::mpsc;
 
 use crate::{
-    allocator::AlwaysNewMetricsAllocator,
-    pipeline::{AggregationBatcher, Aggregator, DistributionMode, StreamSink},
-    Metrics, MetricsFactory,
+    pipeline::{AggregationBatcher, DistributionMode},
+    GaugeFactory,
 };
 
-static INTROSPECTION_METRICS_FACTORY: ArcSwapOption<
-    MetricsFactory<AlwaysNewMetricsAllocator, StreamSink<Metrics>>,
-> = ArcSwapOption::const_empty();
+static INTROSPECTION_GAUGE_FACTORY: ArcSwapOption<GaugeFactory> = ArcSwapOption::const_empty();
 
 /// Configuration for introspection metrics
 pub struct IntrospectionConfiguration<TAggregationBatcher: AggregationBatcher> {
@@ -57,38 +54,20 @@ pub async fn run_introspection_metrics<TAggregationBatcher>(
     TAggregationBatcher: AggregationBatcher + Clone,
     TAggregationBatcher::TBatch: Send,
 {
-    let (sink, receiver) = StreamSink::new();
-    let aggregator = Aggregator::new(receiver, configuration.distribution_mode);
-
-    let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, StreamSink<Metrics>> =
-        MetricsFactory::new(sink);
-    let metrics_factory = Arc::new(metrics_factory);
-
-    let gauge_future = metrics_factory.clone().report_gauges_forever(
+    let gauge_factory = GaugeFactory::default();
+    let gauge_future = gauge_factory.clone().report_gauges_forever(
         configuration.cadence,
         configuration.sender.clone(),
         configuration.batcher.clone(),
     );
-    let aggregator_future = aggregator.aggregate_metrics_forever(
-        configuration.cadence,
-        configuration.sender,
-        configuration.batcher,
-    );
 
-    INTROSPECTION_METRICS_FACTORY.store(Some(metrics_factory));
+    INTROSPECTION_GAUGE_FACTORY.store(Some(gauge_factory.into()));
 
-    select! {
-        _ = gauge_future => {
-            log::warn!("gauge collection ended - terminating introspection metrics")
-        }
-        _ = aggregator_future => {
-            log::warn!("aggregator collection ended - terminating introspection metrics")
-        }
-    }
+    let _ = gauge_future.await;
+    log::warn!("gauge collection ended - terminating introspection metrics");
 }
 
 #[allow(unused, clippy::type_complexity)]
-pub(crate) fn introspection_factory(
-) -> arc_swap::Guard<Option<Arc<MetricsFactory<AlwaysNewMetricsAllocator, StreamSink<Metrics>>>>> {
-    INTROSPECTION_METRICS_FACTORY.load()
+pub(crate) fn introspection_factory() -> arc_swap::Guard<Option<Arc<GaugeFactory>>> {
+    INTROSPECTION_GAUGE_FACTORY.load()
 }

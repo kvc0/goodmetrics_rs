@@ -4,12 +4,7 @@ use std::{
 };
 
 use criterion::Criterion;
-use goodmetrics::{allocator::AlwaysNewMetricsAllocator, pipeline::Sink, Metrics, MetricsFactory};
-
-struct DropSink;
-impl Sink<Metrics> for DropSink {
-    fn accept(&self, _: Metrics) {}
-}
+use goodmetrics::GaugeFactory;
 
 pub fn gauges(criterion: &mut Criterion) {
     // env_logger::builder().is_test(false).try_init().unwrap();
@@ -17,10 +12,9 @@ pub fn gauges(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("gauges");
     group.throughput(criterion::Throughput::Elements(1));
 
-    let metrics_factory: MetricsFactory<AlwaysNewMetricsAllocator, DropSink> =
-        MetricsFactory::new(DropSink);
+    let gauge_factory = GaugeFactory::default();
 
-    let cached_gauge = metrics_factory.gauge_statistic_set("contention", "is okay");
+    let cached_gauge = gauge_factory.gauge_statistic_set("contention", "is okay");
 
     for threads in [1, 2, 4, 8, 16] {
         group.bench_function(format!("concurrency-{threads:02}"), |bencher| {

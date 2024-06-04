@@ -27,6 +27,8 @@ pub mod downstream;
 #[deny(missing_docs)]
 mod gauge;
 #[deny(missing_docs)]
+mod gauge_factory;
+#[deny(missing_docs)]
 mod gauge_group;
 #[cfg(feature = "introspect")]
 #[deny(missing_docs)]
@@ -41,6 +43,7 @@ pub mod pipeline;
 mod types;
 
 pub use gauge::{Gauge, GaugeDimensions, StatisticSetGauge};
+pub use gauge_factory::GaugeFactory;
 pub use gauge_group::GaugeGroup;
 pub use metrics::{DimensionGuard, Metrics, MetricsBehavior, Timer};
 pub use metrics_factory::MetricsFactory;
