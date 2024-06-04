@@ -299,6 +299,9 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
                     }
                 })
                 .collect();
+            if gauges.is_empty() {
+                continue;
+            }
             match sender.try_send(batcher.batch_aggregations(now, period, &mut gauges)) {
                 Ok(_) => log::debug!("reported batch"),
                 Err(e) => {
