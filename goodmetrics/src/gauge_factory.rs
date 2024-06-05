@@ -14,7 +14,7 @@ use crate::{
 /// A handle for creating gauges.
 ///
 /// It is cheap to copy around, but you should cache your gauges.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct GaugeFactory {
     gauge_groups: Arc<Mutex<HashMap<Name, GaugeGroup>>>,
 }

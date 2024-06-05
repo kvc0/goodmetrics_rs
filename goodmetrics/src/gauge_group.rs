@@ -8,7 +8,7 @@ use crate::{aggregation::Aggregation, Gauge};
 use crate::{pipeline::DimensionPosition, types::Name};
 
 /// Gauges grouped by a shared dimension position
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct GaugeGroup {
     dimensioned_gauges: HashMap<DimensionPosition, HashMap<Name, Weak<Gauge>>>,
 }
