@@ -74,25 +74,33 @@ pub struct TDigest {
 
 impl std::fmt::Display for TDigest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut debugger = f.debug_map();
-        debugger
-            .entry(&"sum", &self.sum)
-            .entry(&"count", &self.count)
-            .entry(&"min", &self.min)
-            .entry(&"max", &self.max);
-        if OrderedFloat::from(2) < self.count {
-            debugger.entry(&"p50", &self.estimate_quantile(0.5));
+        let count = self.count() as usize;
+
+        write!(
+            f,
+            "{{count: {count}, sum: {:.1}, min: {:.1}, max: {:.1}",
+            self.sum(),
+            self.min(),
+            self.max(),
+        )?;
+
+        if 2 < count {
+            write!(f, ", p50: {:.1}", &self.estimate_quantile(0.5))?;
         }
-        if OrderedFloat::from(100) < self.count {
-            debugger.entry(&"p90", &self.estimate_quantile(0.9));
+        if 100 < count {
+            write!(f, ", p90: {:.1}", &self.estimate_quantile(0.9))?;
         }
-        if OrderedFloat::from(400) < self.count {
-            debugger.entry(&"p99", &self.estimate_quantile(0.99));
+        if 400 < count {
+            write!(f, ", p99: {:.1}", &self.estimate_quantile(0.99))?;
         }
-        if OrderedFloat::from(4000) < self.count {
-            debugger.entry(&"p999", &self.estimate_quantile(0.999));
+        if 4000 < count {
+            write!(f, ", p999: {:.1}", &self.estimate_quantile(0.999))?;
         }
-        debugger.finish()
+        if 400000 < count {
+            write!(f, ", p9999: {:.1}", &self.estimate_quantile(0.9999))?;
+        }
+
+        write!(f, "}}")
     }
 }
 
