@@ -9,6 +9,12 @@ pub struct Histogram {
     pub(crate) histogram: HashMap<i64, u64>,
 }
 
+impl std::fmt::Display for Histogram {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_map().entries(self.histogram.iter()).finish()
+    }
+}
+
 impl Histogram {
     /// Add 1 to the value's bucket
     pub fn accumulate<T: Into<i64>>(&mut self, value: T) {

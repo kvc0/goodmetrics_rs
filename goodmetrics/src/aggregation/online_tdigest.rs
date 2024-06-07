@@ -29,6 +29,16 @@ pub struct OnlineTdigest {
     state: Mutex<State>,
 }
 
+impl std::fmt::Display for OnlineTdigest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.state.lock().expect("lock should never fail").current
+        )
+    }
+}
+
 impl Clone for OnlineTdigest {
     fn clone(&self) -> Self {
         Self {

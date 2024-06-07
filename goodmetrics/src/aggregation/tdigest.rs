@@ -72,6 +72,30 @@ pub struct TDigest {
     min: OrderedFloat<f64>,
 }
 
+impl std::fmt::Display for TDigest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debugger = f.debug_map();
+        debugger
+            .entry(&"sum", &self.sum)
+            .entry(&"count", &self.count)
+            .entry(&"min", &self.min)
+            .entry(&"max", &self.max);
+        if OrderedFloat::from(2) < self.count {
+            debugger.entry(&"p50", &self.estimate_quantile(0.5));
+        }
+        if OrderedFloat::from(100) < self.count {
+            debugger.entry(&"p90", &self.estimate_quantile(0.9));
+        }
+        if OrderedFloat::from(400) < self.count {
+            debugger.entry(&"p99", &self.estimate_quantile(0.99));
+        }
+        if OrderedFloat::from(4000) < self.count {
+            debugger.entry(&"p999", &self.estimate_quantile(0.999));
+        }
+        debugger.finish()
+    }
+}
+
 impl TDigest {
     pub(crate) fn new_with_size(max_size: usize) -> Self {
         TDigest {

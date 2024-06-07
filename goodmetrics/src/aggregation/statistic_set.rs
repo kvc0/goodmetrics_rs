@@ -13,6 +13,17 @@ pub struct StatisticSet {
     pub count: u64,
 }
 
+impl std::fmt::Display for StatisticSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_map()
+            .entry(&"min", &self.min)
+            .entry(&"max", &self.max)
+            .entry(&"sum", &self.sum)
+            .entry(&"count", &self.count)
+            .finish()
+    }
+}
+
 impl Default for StatisticSet {
     fn default() -> Self {
         Self {

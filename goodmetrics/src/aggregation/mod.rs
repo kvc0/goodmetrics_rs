@@ -48,6 +48,18 @@ impl PartialEq for Aggregation {
     }
 }
 
+impl std::fmt::Display for Aggregation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Aggregation::Sum(sum) => sum.fmt(f),
+            Aggregation::StatisticSet(ss) => ss.fmt(f),
+            Aggregation::ExponentialHistogram(eh) => eh.fmt(f),
+            Aggregation::Histogram(h) => h.fmt(f),
+            Aggregation::TDigest(td) => td.fmt(f),
+        }
+    }
+}
+
 /// Ability to accept Distributions into a structure
 pub trait AbsorbDistribution {
     /// Absorb each value of a distribution into a structure

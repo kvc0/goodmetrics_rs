@@ -20,6 +20,18 @@ pub struct ExponentialHistogram {
     negative_buckets: VecDeque<usize>,
 }
 
+impl std::fmt::Display for ExponentialHistogram {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_map()
+            .entries(
+                self.value_counts()
+                    // let the bucket format be coarse for readability
+                    .map(|(bucket, count)| (format!("{:.2}", bucket), count)),
+            )
+            .finish()
+    }
+}
+
 impl ExponentialHistogram {
     /// Desired scale will drop as necessary to match the static max buckets configuration.
     /// This will happen dynamically in response to observed range. If your distribution
