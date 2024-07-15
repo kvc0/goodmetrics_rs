@@ -111,8 +111,8 @@ impl TDigest {
             max_size,
             sum: OrderedFloat::from(0.0),
             count: OrderedFloat::from(0.0),
-            max: OrderedFloat::from(std::f64::NAN),
-            min: OrderedFloat::from(std::f64::NAN),
+            max: OrderedFloat::from(f64::NAN),
+            min: OrderedFloat::from(f64::NAN),
         }
     }
 
@@ -208,8 +208,8 @@ impl Default for TDigest {
             max_size: 100,
             sum: OrderedFloat::from(0.0),
             count: OrderedFloat::from(0.0),
-            max: OrderedFloat::from(std::f64::NAN),
-            min: OrderedFloat::from(std::f64::NAN),
+            max: OrderedFloat::from(f64::NAN),
+            min: OrderedFloat::from(f64::NAN),
         }
     }
 }
@@ -388,8 +388,8 @@ impl TDigest {
         let mut starts: Vec<usize> = Vec::with_capacity(digests.len());
 
         let mut count: f64 = 0.0;
-        let mut min = OrderedFloat::from(std::f64::INFINITY);
-        let mut max = OrderedFloat::from(std::f64::NEG_INFINITY);
+        let mut min = OrderedFloat::from(f64::INFINITY);
+        let mut max = OrderedFloat::from(f64::NEG_INFINITY);
 
         let mut start: usize = 0;
         for digest in digests.into_iter() {

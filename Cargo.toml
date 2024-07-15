@@ -25,6 +25,7 @@ rand                            = { version = "0.8" }
 test-log                        = { version = "0.2" }
 tokio                           = { version = "1.33" }
 tokio-rustls                    = { version = "0.24", features = ["dangerous_configuration"] }
+tokio-stream                    = { version = "0.1" }
 tokio-test                      = { version = "0.4" }
 tonic                           = { version = "0.11", features = ["tls"] }
 tonic-build                     = { version = "0.11", features = [] }

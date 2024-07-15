@@ -1,9 +1,12 @@
 use std::{
     collections::HashMap,
+    pin::pin,
     time::{Duration, SystemTime},
 };
 
+use futures::{Stream, StreamExt};
 use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
     aggregation::{
@@ -50,13 +53,22 @@ where
     }
 
     /// Spawn this on a tokio runtime to send your metrics to your downstream receiver
-    pub async fn send_batches_forever(mut self, mut receiver: mpsc::Receiver<Vec<Datum>>) {
+    pub async fn send_batches_forever(self, receiver: mpsc::Receiver<Vec<Datum>>) {
+        self.send_metrics_stream_forever(ReceiverStream::new(receiver))
+            .await;
+    }
+
+    /// Spawn this on a tokio runtime to send your metrics to your downstream receiver
+    pub async fn send_metrics_stream_forever(
+        mut self,
+        mut receiver: impl Stream<Item = Vec<Datum>> + Unpin,
+    ) {
         let mut interval = tokio::time::interval(Duration::from_millis(500));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
             // Send as quickly as possible while there are more batches
-            while let Some(batch) = receiver.recv().await {
+            while let Some(batch) = pin!(&mut receiver).next().await {
                 let result = self
                     .client
                     .send_metrics(MetricsRequest {
