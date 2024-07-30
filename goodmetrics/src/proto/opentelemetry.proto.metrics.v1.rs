@@ -284,7 +284,7 @@ pub mod number_data_point {
     /// The value itself.  A point is considered invalid when one of the recognized
     /// value fields is not present inside this oneof.
     #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
     pub enum Value {
         #[prost(double, tag = "4")]
         AsDouble(f64),
@@ -541,7 +541,7 @@ pub mod summary_data_point {
     /// See the following issue for more context:
     /// <https://github.com/open-telemetry/opentelemetry-proto/issues/125>
     #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, Copy, PartialEq, ::prost::Message)]
     pub struct ValueAtQuantile {
         /// The quantile of a distribution. Must be in the interval
         /// \[0.0, 1.0\].
@@ -596,7 +596,7 @@ pub mod exemplar {
     /// considered invalid when one of the recognized value fields is not present
     /// inside this oneof.
     #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
     pub enum Value {
         #[prost(double, tag = "3")]
         AsDouble(f64),

@@ -6,7 +6,7 @@ mod channel_connection;
 mod goodmetrics_downstream;
 mod opentelemetry_downstream;
 
-pub use channel_connection::{get_channel, ChannelType};
+pub use channel_connection::{get_client, ChannelType};
 pub use goodmetrics_downstream::{GoodmetricsBatcher, GoodmetricsDownstream};
 pub use opentelemetry_downstream::{OpenTelemetryDownstream, OpentelemetryBatcher};
 

@@ -13,6 +13,7 @@ use crate::{
 /// # let runtime = tokio::runtime::Builder::new_current_thread().build().expect("runtime can be built");
 /// # runtime.block_on(async {
 /// use goodmetrics::allocator::AlwaysNewMetricsAllocator;
+/// use goodmetrics::downstream::get_client;
 /// use goodmetrics::downstream::GoodmetricsBatcher;
 /// use goodmetrics::downstream::GoodmetricsDownstream;
 /// use goodmetrics::GaugeFactory;
@@ -30,7 +31,12 @@ use crate::{
 ///
 /// // 2. Configure your delivery pipeline:
 /// let downstream = GoodmetricsDownstream::new(
-///     tonic::transport::Channel::from_static("https://[::1]:50051").connect_lazy(),
+///     get_client(
+///         "https://ingest.example.com",
+///         || None,
+///         goodmetrics::proto::goodmetrics::metrics_client::MetricsClient::with_origin,
+///     ).expect("i can make a channel to goodmetrics"),
+///     Some(("authorization", "token".parse().expect("must be able to parse header"))),
 ///     [("application", "example")],
 /// );
 ///

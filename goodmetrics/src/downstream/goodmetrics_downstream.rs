@@ -7,6 +7,7 @@ use std::{
 use futures::{Stream, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use tonic::metadata::AsciiMetadataValue;
 
 use crate::{
     aggregation::{
@@ -26,6 +27,7 @@ use super::{EpochTime, StdError};
 /// A downstream that sends metrics to a `goodmetricsd` or other goodmetrics grpc server.
 pub struct GoodmetricsDownstream<TChannel> {
     client: MetricsClient<TChannel>,
+    header: Option<(&'static str, AsciiMetadataValue)>,
     shared_dimensions: HashMap<String, proto::goodmetrics::Dimension>,
 }
 
@@ -38,13 +40,13 @@ where
 {
     /// Create a new goodmetrics sender from a grpc channel
     pub fn new(
-        channel: TChannel,
+        client: MetricsClient<TChannel>,
+        header: Option<(&'static str, AsciiMetadataValue)>,
         shared_dimensions: impl IntoIterator<Item = (impl Into<String>, impl Into<Dimension>)>,
     ) -> Self {
-        let client: MetricsClient<TChannel> = MetricsClient::new(channel);
-
         GoodmetricsDownstream {
             client,
+            header,
             shared_dimensions: shared_dimensions
                 .into_iter()
                 .map(|(k, v)| (k.into(), v.into().into()))
@@ -71,10 +73,10 @@ where
             while let Some(batch) = pin!(&mut receiver).next().await {
                 let result = self
                     .client
-                    .send_metrics(MetricsRequest {
+                    .send_metrics(self.request(MetricsRequest {
                         shared_dimensions: self.shared_dimensions.clone(),
                         metrics: batch,
-                    })
+                    }))
                     .await;
                 match result {
                     Ok(success) => {
@@ -92,6 +94,14 @@ where
                 };
             }
         }
+    }
+
+    fn request<T>(&self, request: T) -> tonic::Request<T> {
+        let mut request = tonic::Request::new(request);
+        if let Some((header, value)) = self.header.as_ref() {
+            request.metadata_mut().insert(*header, value.clone());
+        }
+        request
     }
 }
 

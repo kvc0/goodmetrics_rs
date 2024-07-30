@@ -14,7 +14,7 @@ pub struct ExportMetricsServiceRequest {
 }
 #[derive(Eq)]
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct ExportMetricsServiceResponse {}
 /// Generated client implementations.
 pub mod metrics_service_client {

@@ -4,17 +4,16 @@ use std::time::Duration;
 use criterion::Criterion;
 use goodmetrics::allocator::AlwaysNewMetricsAllocator;
 use goodmetrics::pipeline::StreamSink;
-use hyper::{header::HeaderName, http::HeaderValue};
 
 use goodmetrics::{
-    downstream::{get_channel, OpenTelemetryDownstream, OpentelemetryBatcher},
+    downstream::{get_client, OpenTelemetryDownstream, OpentelemetryBatcher},
     pipeline::{Aggregator, DistributionMode},
     MetricsFactory,
 };
 use goodmetrics::{Dimension, Name};
 use tokio::join;
 use tokio::sync::mpsc;
-use tokio_rustls::rustls::{OwnedTrustAnchor, RootCertStore};
+use tokio_rustls::rustls::RootCertStore;
 
 #[allow(clippy::unwrap_used)]
 pub fn lightstep_demo(criterion: &mut Criterion) {
@@ -32,36 +31,26 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
             .build()
             .expect("should be able to make tokio runtime");
         runtime.block_on(async move {
-            let channel = get_channel(
+            let channel = get_client(
                 "https://ingest.lightstep.com",
                 || {
-                    let mut store = RootCertStore::empty();
-                    store.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(
-                        |trust_anchor| {
-                            OwnedTrustAnchor::from_subject_spki_name_constraints(
-                                trust_anchor.subject.to_vec(),
-                                trust_anchor.subject_public_key_info.to_vec(),
-                                trust_anchor
-                                    .name_constraints
-                                    .as_ref()
-                                    .map(|der| der.to_vec()),
-                            )
-                        },
-                    ));
+                    let store = RootCertStore {
+                        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+                    };
                     Some(store)
                 },
-                Some((
-                    HeaderName::from_static("lightstep-access-token"),
-                    HeaderValue::from_str(
-                        &std::env::var("LIGHTSTEP_ACCESS_TOKEN")
-                            .expect("you need to provide LIGHTSTEP_ACCESS_TOKEN"),
-                    )
-                    .expect("access token must be headerizable"),
-                )),
+                goodmetrics::proto::opentelemetry::collector::metrics::v1::metrics_service_client::MetricsServiceClient::with_origin,
             )
             .expect("i can make a channel to lightstep");
             let downstream = OpenTelemetryDownstream::new(
                 channel,
+                Some((
+                    "lightstep-access-token",
+                    std::env::var("LIGHTSTEP_ACCESS_TOKEN")
+                        .expect("you need to provide LIGHTSTEP_ACCESS_TOKEN")
+                        .parse()
+                        .expect("must be headerizable")
+                )),
                 Some(BTreeMap::from_iter(vec![(
                     Name::from("name"),
                     Dimension::from("value i guess"),

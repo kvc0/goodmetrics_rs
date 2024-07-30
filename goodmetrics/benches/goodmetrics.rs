@@ -1,11 +1,10 @@
 use std::{sync::Arc, time::Duration};
 
 use criterion::Criterion;
-use hyper::{header::HeaderName, http::HeaderValue};
 
 use goodmetrics::{
     allocator::AlwaysNewMetricsAllocator,
-    downstream::{get_channel, GoodmetricsBatcher, GoodmetricsDownstream},
+    downstream::{get_client, GoodmetricsBatcher, GoodmetricsDownstream},
     pipeline::{Aggregator, DistributionMode, StreamSink},
     MetricsFactory,
 };
@@ -31,16 +30,20 @@ pub fn goodmetrics_demo(criterion: &mut Criterion) {
             .build()
             .expect("should be able to make tokio runtime");
         runtime.block_on(async move {
-            let channel = get_channel(
+            let channel = get_client(
                 &endpoint,
                 || None,
-                Some((
-                    HeaderName::from_static("authorization"),
-                    HeaderValue::try_from(auth).expect("invalid authorization value"),
-                )),
+                goodmetrics::proto::goodmetrics::metrics_client::MetricsClient::with_origin,
             )
             .expect("i can make a channel to goodmetrics");
-            let downstream = GoodmetricsDownstream::new(channel, [("application", "bench")]);
+            let downstream = GoodmetricsDownstream::new(
+                channel,
+                Some((
+                    "authorization",
+                    auth.parse().expect("must be able to parse header"),
+                )),
+                [("application", "bench")],
+            );
 
             join!(
                 aggregator.aggregate_metrics_forever(

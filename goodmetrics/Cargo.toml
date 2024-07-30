@@ -43,6 +43,7 @@ futures-batch                   = { workspace = true }
 http-body                       = { workspace = true }
 hyper                           = { workspace = true }
 hyper-rustls                    = { workspace = true }
+hyper-util                      = { workspace = true }
 log                             = { workspace = true }
 ordered-float                   = { workspace = true }
 prost                           = { workspace = true }

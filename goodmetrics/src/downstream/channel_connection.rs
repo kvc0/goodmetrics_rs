@@ -1,49 +1,40 @@
 use std::{str::FromStr, sync::Arc};
 
-use hyper::{
-    client::HttpConnector,
-    header::HeaderName,
-    http::{self, HeaderValue},
-    Body, Error, Request, Response, Uri,
+use hyper::Uri;
+use hyper_util::{client::legacy::connect::HttpConnector, rt::TokioExecutor};
+use tokio_rustls::rustls::{
+    client::danger::ServerCertVerifier, crypto::aws_lc_rs, ClientConfig, RootCertStore,
 };
-use tokio_rustls::rustls::{client::ServerCertVerifier, ClientConfig, RootCertStore};
-use tonic::body::BoxBody;
-use tower::{buffer::Buffer, util::BoxService, ServiceExt};
 
 use super::StdError;
 
 /// Type alias for internal channel type
-pub type ChannelType =
-    Buffer<BoxService<Request<BoxBody>, Response<Body>, Error>, Request<BoxBody>>;
+pub type ChannelType = hyper_util::client::legacy::Client<
+    hyper_rustls::HttpsConnector<HttpConnector>,
+    tonic::body::BoxBody,
+>;
 
 /// You can make an insecure connection by passing `|| { None }` to tls_trust.
 /// If you want to make a safer connection you can add your trust roots,
 /// for example:
 /// ```rust
-///  || {
-///     let mut store = tokio_rustls::rustls::RootCertStore::empty();
-///     store.add_server_trust_anchors(
-///         webpki_roots::TLS_SERVER_ROOTS.iter().map(|trust_anchor| {
-///             tokio_rustls::rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-///                 trust_anchor.subject.to_vec(),
-///                 trust_anchor.subject_public_key_info.to_vec(),
-///                 trust_anchor.name_constraints.as_ref().map(|der| der.to_vec())
-///             )
-///         })
-///     );
-///     Some(store)
-/// }
-/// ;
+/// || {
+///     Some(tokio_rustls::rustls::RootCertStore {
+///         roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+///     })
+/// };
 /// ```
-pub fn get_channel<TrustFunction>(
+pub fn get_client<TrustFunction, WithOrigin, U>(
     endpoint: &str,
     tls_trust: TrustFunction,
-    header: Option<(HeaderName, HeaderValue)>,
-) -> Result<ChannelType, StdError>
+    with_origin: WithOrigin,
+) -> Result<U, StdError>
 where
     TrustFunction: FnOnce() -> Option<RootCertStore>,
+    WithOrigin: Fn(ChannelType, Uri) -> U,
 {
-    let tls = ClientConfig::builder().with_safe_defaults();
+    let tls = ClientConfig::builder_with_provider(Arc::new(aws_lc_rs::default_provider()))
+        .with_safe_default_protocol_versions()?;
     let tls = match tls_trust() {
         Some(trust) => tls.with_root_certificates(trust).with_no_client_auth(),
         None => {
@@ -71,57 +62,63 @@ where
         })
         .service(http_connector);
 
-    let https_client = hyper::Client::builder().build(https_connector);
-    // Hyper expects an absolute `Uri` to allow it to know which server to connect too.
-    // Currently, tonic's generated code only sets the `path_and_query` section so we
-    // are going to write a custom tower layer in front of the hyper client to add the
-    // scheme and authority.
+    let https_client = hyper_util::client::legacy::Client::builder(TokioExecutor::new())
+        .http2_only(true)
+        .build(https_connector);
     let uri = Uri::from_str(endpoint)?;
-    let service = tower::ServiceBuilder::new()
-        .map_request(move |mut req: http::Request<tonic::body::BoxBody>| {
-            let uri = Uri::builder()
-                .scheme(uri.scheme().expect("uri needs a scheme://").clone())
-                .authority(
-                    uri.authority()
-                        .expect("uri needs an authority (host and port)")
-                        .clone(),
-                )
-                .path_and_query(
-                    req.uri()
-                        .path_and_query()
-                        .expect("uri needs a path")
-                        .clone(),
-                )
-                .build()
-                .expect("could not build uri");
-            match &header {
-                Some((name, value)) => {
-                    req.headers_mut().append(name, value.clone());
-                }
-                None => {}
-            };
 
-            *req.uri_mut() = uri;
-            req
-        })
-        .service(https_client)
-        .boxed();
-    Ok(Buffer::new(service, 1024))
+    // Using `with_origin` will let the codegenerated client set the `scheme` and
+    // `authority` from the provided `Uri`. You need to pass "https://example.com"
+
+    Ok(with_origin(https_client, uri))
 }
 
+#[derive(Debug)]
 struct StupidVerifier {}
 
 impl ServerCertVerifier for StupidVerifier {
     fn verify_server_cert(
         &self,
-        _end_entity: &tokio_rustls::rustls::Certificate,
-        _intermediates: &[tokio_rustls::rustls::Certificate],
-        _server_name: &tokio_rustls::rustls::ServerName,
-        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _end_entity: &tonic::transport::CertificateDer<'_>,
+        _intermediates: &[tonic::transport::CertificateDer<'_>],
+        _server_name: &tokio_rustls::rustls::pki_types::ServerName<'_>,
         _ocsp_response: &[u8],
-        _now: std::time::SystemTime,
-    ) -> Result<tokio_rustls::rustls::client::ServerCertVerified, tokio_rustls::rustls::Error> {
+        _now: tokio_rustls::rustls::pki_types::UnixTime,
+    ) -> Result<tokio_rustls::rustls::client::danger::ServerCertVerified, tokio_rustls::rustls::Error>
+    {
         // roflmao
-        Ok(tokio_rustls::rustls::client::ServerCertVerified::assertion())
+        Ok(tokio_rustls::rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &tonic::transport::CertificateDer<'_>,
+        _dss: &tokio_rustls::rustls::DigitallySignedStruct,
+    ) -> Result<
+        tokio_rustls::rustls::client::danger::HandshakeSignatureValid,
+        tokio_rustls::rustls::Error,
+    > {
+        // roflmao
+        Ok(tokio_rustls::rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &tonic::transport::CertificateDer<'_>,
+        _dss: &tokio_rustls::rustls::DigitallySignedStruct,
+    ) -> Result<
+        tokio_rustls::rustls::client::danger::HandshakeSignatureValid,
+        tokio_rustls::rustls::Error,
+    > {
+        // roflmao
+        Ok(tokio_rustls::rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<tokio_rustls::rustls::SignatureScheme> {
+        tokio_rustls::rustls::crypto::ring::default_provider()
+            .signature_verification_algorithms
+            .supported_schemes()
     }
 }

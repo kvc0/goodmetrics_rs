@@ -13,7 +13,7 @@ pub struct MetricsRequest {
 }
 #[derive()]
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MetricsReply {}
 #[derive()]
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -90,7 +90,7 @@ pub mod measurement {
 }
 #[derive()]
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct StatisticSet {
     #[prost(double, tag = "1")]
     pub minimum: f64,
@@ -132,7 +132,7 @@ pub struct TDigest {
 pub mod t_digest {
     #[derive()]
     #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, Copy, PartialEq, ::prost::Message)]
     pub struct Centroid {
         #[prost(double, tag = "1")]
         pub mean: f64,

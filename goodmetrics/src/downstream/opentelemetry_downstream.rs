@@ -8,6 +8,7 @@ use std::{
 use futures::{Stream, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use tonic::metadata::AsciiMetadataValue;
 
 use crate::{
     aggregation::Sum,
@@ -51,6 +52,7 @@ const THE_ACTUAL_TEMPORALITY: i32 = AggregationTemporality::Delta as i32;
 /// only their protos. All your measurements will be Delta temporality.
 pub struct OpenTelemetryDownstream<TChannel> {
     client: MetricsServiceClient<TChannel>,
+    header: Option<(&'static str, AsciiMetadataValue)>,
     shared_dimensions: Option<Vec<KeyValue>>,
 }
 
@@ -64,11 +66,14 @@ where
     <TChannel::ResponseBody as http_body::Body>::Error: Into<StdError> + Send,
 {
     /// Create a new opentelemetry metrics sender from a grpc channel
-    pub fn new(channel: TChannel, shared_dimensions: Option<DimensionPosition>) -> Self {
-        let client: MetricsServiceClient<TChannel> = MetricsServiceClient::new(channel);
-
+    pub fn new(
+        client: MetricsServiceClient<TChannel>,
+        header: Option<(&'static str, AsciiMetadataValue)>,
+        shared_dimensions: Option<DimensionPosition>,
+    ) -> Self {
         OpenTelemetryDownstream {
             client,
+            header,
             shared_dimensions: shared_dimensions.map(as_otel_dimensions),
         }
     }
@@ -92,7 +97,7 @@ where
             while let Some(batch) = pin!(&mut receiver).next().await {
                 let result = self
                     .client
-                    .export(ExportMetricsServiceRequest {
+                    .export(self.request(ExportMetricsServiceRequest {
                         resource_metrics: vec![ResourceMetrics {
                             resource: self.shared_dimensions.as_ref().map(|dimensions| Resource {
                                 attributes: dimensions.clone(),
@@ -108,7 +113,7 @@ where
                                 metrics: batch,
                             }],
                         }],
-                    })
+                    }))
                     .await;
                 match result {
                     Ok(success) => {
@@ -126,6 +131,14 @@ where
                 };
             }
         }
+    }
+
+    fn request<T>(&self, request: T) -> tonic::Request<T> {
+        let mut request = tonic::Request::new(request);
+        if let Some((header, value)) = self.header.as_ref() {
+            request.metadata_mut().insert(*header, value.clone());
+        }
+        request
     }
 }
 
@@ -528,11 +541,12 @@ mod test {
 
     use crate::{
         downstream::{
-            channel_connection::get_channel,
+            channel_connection::get_client,
             opentelemetry_downstream::{OpenTelemetryDownstream, OpentelemetryBatcher},
         },
         metrics::Metrics,
         pipeline::{Aggregator, DistributionMode, StreamSink},
+        proto::opentelemetry::collector::metrics::v1::metrics_service_client::MetricsServiceClient,
     };
 
     #[test_log::test(tokio::test)]
@@ -541,12 +555,10 @@ mod test {
         let aggregator = Aggregator::new(receiver, DistributionMode::Histogram);
         let (batch_sender, batch_receiver) = mpsc::channel(128);
 
-        let downstream = OpenTelemetryDownstream::new(
-            get_channel("localhost:6379", || None, None).expect(
-                "i can make a channel to localhost even though it probably isn't listening",
-            ),
-            None,
-        );
+        let client = get_client("localhost:6379", || None, MetricsServiceClient::with_origin)
+            .expect("I can make ");
+
+        let downstream = OpenTelemetryDownstream::new(client, None, None);
 
         let metrics_tasks = tokio::task::LocalSet::new();
 
