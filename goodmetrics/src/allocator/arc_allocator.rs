@@ -65,10 +65,10 @@ where
             .cache_clock
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             % self.state.metrics_cache.len();
-        let metrics = self.state.metrics_cache[slot]
-            .lock()
-            .expect("local mutex")
-            .pop();
+        let metrics = match self.state.metrics_cache[slot].try_lock() {
+            Ok(mut cache) => cache.pop(),
+            Err(_) => None,
+        };
         let metrics = match metrics {
             Some(mut reused_metrics) => {
                 reused_metrics.restart();
@@ -103,10 +103,11 @@ where
             .cache_clock
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             % self.metrics_cache.len();
-        let mut cache = self.metrics_cache[slot].lock().expect("local mutex");
-        if cache.len() < cache.capacity() {
-            metrics.restart();
-            cache.push(metrics)
+        if let Ok(mut cache) = self.metrics_cache[slot].try_lock() {
+            if cache.len() < cache.capacity() {
+                metrics.restart();
+                cache.push(metrics)
+            }
         }
     }
 }
