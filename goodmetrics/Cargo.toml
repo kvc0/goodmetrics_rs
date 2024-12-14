@@ -1,14 +1,14 @@
 [package]
 name = "goodmetrics"
-version = "6.0.1"
-edition = "2021"
 description = "Unlimited cardinality, fast metrics recording - for services"
-license = "Apache-2.0"
-authors = ["kvc0"]
-readme = "../README.md"
-repository = "https://github.com/kvc0/goodmetrics_rs"
-keywords = ["metrics", "goodmetrics", "service", "performance"]
-categories = ["web-programming", "development-tools::profiling"]
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [features]
 ahash-hasher    = ["ahash"]
@@ -36,8 +36,8 @@ harness = false
 [dependencies]
 ahash                           = { workspace = true, optional = true }
 arc-swap                        = { workspace = true, optional = true }
-
 bytes                           = { workspace = true }
+exponential-histogram           = { workspace = true }
 futures                         = { workspace = true }
 futures-batch                   = { workspace = true }
 http-body                       = { workspace = true }
@@ -56,6 +56,7 @@ tower                           = { workspace = true }
 [dev-dependencies]
 criterion                       = { workspace = true }
 env_logger                      = { workspace = true }
+goodmetrics-derive              = { workspace = true }
 rand                            = { workspace = true }
 test-log                        = { workspace = true }
 tokio                           = { workspace = true, features = ["rt-multi-thread"]}

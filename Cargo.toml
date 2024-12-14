@@ -1,18 +1,32 @@
-
 [workspace]
 resolver = "2"
 
 members = [
     "goodmetrics",
+    "goodmetrics_derive",
     "proto_generator",
 ]
 
+[workspace.package]
+version = "6.0.1"
+authors = ["kvc0"]
+repository = "https://github.com/kvc0/goodmetrics_rs"
+edition = "2021"
+license = "Apache-2.0"
+readme = "README.md"
+keywords = ["metrics", "goodmetrics", "service", "performance"]
+categories = ["web-programming", "development-tools::profiling"]
+
 [workspace.dependencies]
+goodmetrics                     = { path = "goodmetrics", version = ">=0" }
+goodmetrics-derive              = { path = "goodmetrics_derive", version = ">=0" }
+
 ahash                           = { version = "0.8" }
 arc-swap                        = { version = "1.7" }
 bytes                           = { version = "1.5" }
 criterion                       = { version = "0.5" }
 env_logger                      = { version = "0.11" }
+exponential-histogram           = { version = "0.2" }
 futures                         = { version = "0.3" }
 futures-batch                   = { version = "0.6" }
 http-body                       = { version = "1.0" }

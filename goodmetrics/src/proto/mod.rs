@@ -2,7 +2,7 @@
 pub mod goodmetrics;
 
 // opentelemetry uses poor enum variant names
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::all)]
 #[rustfmt::skip]
 pub mod opentelemetry {
     pub mod collector {
