@@ -45,7 +45,7 @@ pub mod stats;
 mod types;
 
 pub use gauge::{Gauge, GaugeDimensions, StatisticSetGauge};
-pub use gauge_factory::GaugeFactory;
+pub use gauge_factory::{default_gauge_factory, GaugeFactory};
 pub use gauge_group::GaugeGroup;
 pub use metrics::{DimensionGuard, Metrics, MetricsBehavior, Timer};
 pub use metrics_factory::MetricsFactory;

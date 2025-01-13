@@ -173,9 +173,7 @@ mod test {
             dimensions: impl IntoIterator<Item = (crate::Name, crate::Dimension)>,
         ) {
             self.actions
-                .send(Collect::RootComponent(
-                    dimensions.into_iter().collect(),
-                ))
+                .send(Collect::RootComponent(dimensions.into_iter().collect()))
                 .expect("send must succeed");
             stat.record(self);
         }
@@ -186,9 +184,7 @@ mod test {
             dimensions: impl IntoIterator<Item = (crate::Name, crate::Dimension)>,
         ) {
             self.actions
-                .send(Collect::Subcomponent(
-                    dimensions.into_iter().collect(),
-                ))
+                .send(Collect::Subcomponent(dimensions.into_iter().collect()))
                 .expect("send must succeed");
             stat.record(self);
         }
@@ -288,10 +284,7 @@ mod test {
                     name: Name::Str("calls"),
                     value: 4
                 },
-                Collect::Subcomponent(vec![(
-                    Name::Str("name"),
-                    Dimension::Str("b_subcomponent")
-                ),]),
+                Collect::Subcomponent(vec![(Name::Str("name"), Dimension::Str("b_subcomponent")),]),
                 Collect::Sum {
                     name: Name::Str("calls"),
                     value: 0

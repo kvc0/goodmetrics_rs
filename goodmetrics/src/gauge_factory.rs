@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
     time::{Duration, SystemTime},
 };
 
@@ -10,6 +10,15 @@ use crate::{
     pipeline::{AggregatedMetricsMap, AggregationBatcher},
     Gauge, GaugeDimensions, GaugeGroup, Name,
 };
+
+/// The default gauge factory. You should use this unless you have some fancy multi-factory setup.
+///
+/// Remember to report_gauges_forever() at the start of your program if you use this factory.
+pub fn default_gauge_factory() -> &'static GaugeFactory {
+    static DEFAULT_GAUGE_FACTORY: LazyLock<GaugeFactory> = LazyLock::new(GaugeFactory::default);
+
+    &DEFAULT_GAUGE_FACTORY
+}
 
 /// A handle for creating gauges.
 ///

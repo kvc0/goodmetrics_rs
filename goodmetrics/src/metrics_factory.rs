@@ -91,8 +91,8 @@ where
     }
 }
 
-impl<'a, TMetricsAllocator, TSink> ReturnTarget<TMetricsAllocator::TMetricsRef>
-    for &'a MetricsFactory<TMetricsAllocator, TSink>
+impl<TMetricsAllocator, TSink> ReturnTarget<TMetricsAllocator::TMetricsRef>
+    for &MetricsFactory<TMetricsAllocator, TSink>
 where
     TMetricsAllocator: MetricsAllocator + 'static,
     TMetricsAllocator::TMetricsRef: MetricsRef,
