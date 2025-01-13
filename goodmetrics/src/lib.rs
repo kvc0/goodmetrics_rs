@@ -40,8 +40,6 @@ mod metrics_factory;
 #[deny(missing_docs)]
 pub mod pipeline;
 #[deny(missing_docs)]
-pub mod stats;
-#[deny(missing_docs)]
 mod types;
 
 pub use gauge::{Gauge, GaugeDimensions, StatisticSetGauge};

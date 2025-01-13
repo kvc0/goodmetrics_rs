@@ -3,7 +3,6 @@ resolver = "2"
 
 members = [
     "goodmetrics",
-    "goodmetrics_derive",
     "proto_generator",
 ]
 
@@ -19,7 +18,6 @@ categories = ["web-programming", "development-tools::profiling"]
 
 [workspace.dependencies]
 goodmetrics                     = { path = "goodmetrics", version = ">=0" }
-goodmetrics-derive              = { path = "goodmetrics_derive", version = ">=0" }
 
 ahash                           = { version = "0.8" }
 arc-swap                        = { version = "1.7" }

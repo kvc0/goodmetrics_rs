@@ -56,7 +56,6 @@ tower                           = { workspace = true }
 [dev-dependencies]
 criterion                       = { workspace = true }
 env_logger                      = { workspace = true }
-goodmetrics-derive              = { workspace = true }
 rand                            = { workspace = true }
 test-log                        = { workspace = true }
 tokio                           = { workspace = true, features = ["rt-multi-thread"]}
