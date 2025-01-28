@@ -9,6 +9,7 @@ on:
       - v4.*
       - v5.*
       - v6.*
+      - v7.*
 
 env:
   CARGO_TERM_COLOR: always
