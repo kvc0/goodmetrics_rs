@@ -42,7 +42,7 @@ pub mod pipeline;
 #[deny(missing_docs)]
 mod types;
 
-pub use gauge::{Gauge, GaugeDimensions, StatisticSetGauge};
+pub use gauge::{GaugeDimensions, HistogramHandle, StatisticSetHandle, SumHandle};
 pub use gauge_factory::{default_gauge_factory, GaugeFactory};
 pub use gauge_group::GaugeGroup;
 pub use metrics::{DimensionGuard, Metrics, MetricsBehavior, Timer};

@@ -34,7 +34,7 @@ hyper-util                      = { version = "0.1" }
 log                             = { version = "0.4" }
 ordered-float                   = { version = "4.1" }
 prost                           = { version = "0.13" }
-rand                            = { version = "0.8" }
+rand                            = { version = "0.9" }
 test-log                        = { version = "0.2" }
 tokio                           = { version = "1.33" }
 tokio-rustls                    = { version = "0.26", features = ["aws_lc_rs"] }
@@ -42,6 +42,6 @@ tokio-stream                    = { version = "0.1" }
 tokio-test                      = { version = "0.4" }
 tonic                           = { version = "0.12", features = ["tls"] }
 tonic-build                     = { version = "0.12", features = [] }
-tower                           = { version = "0.4" }
+tower                           = { version = "0.5" }
 webpki-roots                    = { version = "0" }
 

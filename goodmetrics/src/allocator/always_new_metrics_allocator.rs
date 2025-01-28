@@ -8,8 +8,8 @@ use crate::{
 use super::{Hasher, MetricsAllocator};
 
 #[cfg(feature = "introspect")]
-static INTROSPECTION_ALWAYS_NEW_INSTANCE_COUNT: crate::introspect::LazyGauge =
-    crate::introspect::LazyGauge::new(Name::Str("always_new_instance"));
+static INTROSPECTION_ALWAYS_NEW_INSTANCE_COUNT: crate::introspect::LazySumGauge =
+    crate::introspect::LazySumGauge::new(Name::Str("always_new_instance"));
 
 /// Allocator which always creates a new instance.
 /// You may want a pooled or arc allocator if you are doing

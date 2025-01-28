@@ -1,8 +1,11 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::{
     sync::atomic::{AtomicI64, AtomicU64},
     time::Instant,
 };
+
+use exponential_histogram::{ExponentialHistogram, SharedExponentialHistogram};
 
 use crate::aggregation::{StatisticSet, Sum};
 use crate::pipeline::DimensionPosition;
@@ -39,6 +42,12 @@ pub struct SumGauge {
     sum: AtomicI64,
 }
 
+/// A gauge that records a histogram of values - latency, for example.
+#[derive(Debug)]
+pub struct HistogramGauge {
+    histogram: SharedExponentialHistogram,
+}
+
 /// A gauge is a compromise for high throughput metrics. Sometimes you can't afford to
 /// allocate a Metrics object to record something, and you can let go of some detail
 /// to still be able to record some information. This is the compromise a Gauge allows.
@@ -47,35 +56,114 @@ pub struct SumGauge {
 /// using a gauge, you probably require non-blocking behavior more than you require
 /// perfect happens-befores in your dashboard data.
 #[derive(Debug)]
-pub enum Gauge {
+pub(crate) enum Gauge {
     /// A statisticset gauge
     StatisticSet(StatisticSetGauge),
     /// A sum gauge
     Sum(SumGauge),
+    /// A histogram gauge
+    Histogram(HistogramGauge),
 }
 
-impl Gauge {
+impl From<StatisticSetGauge> for Gauge {
+    fn from(value: StatisticSetGauge) -> Self {
+        Self::StatisticSet(value)
+    }
+}
+
+impl From<SumGauge> for Gauge {
+    fn from(value: SumGauge) -> Self {
+        Self::Sum(value)
+    }
+}
+
+impl From<HistogramGauge> for Gauge {
+    fn from(value: HistogramGauge) -> Self {
+        Self::Histogram(value)
+    }
+}
+
+/// Handle to a statistic set gauge. If all of these are dropped, the gauge will be dropped.
+#[derive(Clone, Debug)]
+pub struct StatisticSetHandle {
+    pub(crate) gauge: Arc<Gauge>,
+}
+
+impl StatisticSetHandle {
     /// Observe a value of a gauge.
-    ///
-    /// This never blocks. Internal mutability is achieved via platform atomics.
     #[inline]
     pub fn observe(&self, value: impl Into<i64>) {
-        match self {
-            Gauge::StatisticSet(ss) => ss.observe(value),
-            Gauge::Sum(s) => s.observe(value),
+        match &*self.gauge {
+            Gauge::StatisticSet(gauge) => gauge.observe(value),
+            _ => log::error!("This is not a StatisticSetGauge"),
         }
+    }
+}
+
+/// Handle to a sum gauge. If all of these are dropped, the gauge will be dropped.
+#[derive(Clone, Debug)]
+pub struct SumHandle {
+    pub(crate) gauge: Arc<Gauge>,
+}
+
+impl SumHandle {
+    /// Observe a value of a gauge.
+    #[inline]
+    pub fn observe(&self, value: impl Into<i64>) {
+        match &*self.gauge {
+            Gauge::Sum(gauge) => gauge.observe(value),
+            _ => log::error!("This is not a SumGauge"),
+        }
+    }
+}
+
+/// Handle to a histogram gauge. If all of these are dropped, the gauge will be dropped.
+#[derive(Clone, Debug)]
+pub struct HistogramHandle {
+    pub(crate) gauge: Arc<Gauge>,
+}
+
+impl HistogramHandle {
+    /// Observe a value of a gauge.
+    #[inline]
+    pub fn observe(&self, value: impl Into<i64>) {
+        match &*self.gauge {
+            Gauge::Histogram(gauge) => gauge.observe(value),
+            _ => log::error!("This is not a HistogramGauge"),
+        }
+    }
+
+    /// When dropped, record the returned TimeGuard's elapsed nanoseconds in the histogram.
+    pub fn time(&self) -> TimeGuard {
+        TimeGuard {
+            start: Instant::now(),
+            gauge: self.clone(),
+        }
+    }
+}
+
+/// A guard that observes the time since it was created when dropped.
+pub struct TimeGuard {
+    start: Instant,
+    gauge: HistogramHandle,
+}
+
+impl Drop for TimeGuard {
+    fn drop(&mut self) {
+        self.gauge
+            .observe(self.start.elapsed().as_nanos().min(i64::MAX as u128) as i64);
     }
 }
 
 const ORDERING: std::sync::atomic::Ordering = std::sync::atomic::Ordering::Relaxed;
 
-pub(crate) fn statistic_set_gauge() -> Gauge {
-    Gauge::StatisticSet(StatisticSetGauge {
+pub(crate) fn statistic_set_gauge() -> StatisticSetGauge {
+    StatisticSetGauge {
         count: AtomicU64::new(0),
         sum: AtomicI64::new(0),
         min: AtomicI64::new(i64::MAX),
         max: AtomicI64::new(i64::MIN),
-    })
+    }
 }
 
 impl StatisticSetGauge {
@@ -89,15 +177,6 @@ impl StatisticSetGauge {
         self.sum.fetch_add(value, ORDERING);
         self.min.fetch_min(value, ORDERING);
         self.max.fetch_max(value, ORDERING);
-    }
-
-    /// Observe a value of a gauge explicitly. Note that this can roll over!
-    ///
-    /// This never blocks. Internal mutability is achieved via platform atomics.
-    #[inline]
-    pub fn observe_microseconds_since(&self, value: Instant) {
-        let value = value.elapsed().as_micros() as i64;
-        self.observe(value)
     }
 
     /// Takes a dirty snapshot of the gauge without locking.
@@ -118,10 +197,10 @@ impl StatisticSetGauge {
     }
 }
 
-pub(crate) fn sum_gauge() -> Gauge {
-    Gauge::Sum(SumGauge {
+pub(crate) fn sum_gauge() -> SumGauge {
+    SumGauge {
         sum: AtomicI64::new(0),
-    })
+    }
 }
 
 impl SumGauge {
@@ -144,6 +223,30 @@ impl SumGauge {
         }
 
         Some(Sum { sum })
+    }
+}
+
+pub(crate) fn histogram_gauge() -> HistogramGauge {
+    HistogramGauge {
+        histogram: SharedExponentialHistogram::default(),
+    }
+}
+
+impl HistogramGauge {
+    /// Observe a value of a gauge explicitly.
+    #[inline]
+    pub fn observe(&self, count: impl Into<i64>) {
+        self.histogram.accumulate(count.into() as f64);
+    }
+
+    /// Takes a snapshot of the histogram.
+    pub fn reset(&self) -> Option<ExponentialHistogram> {
+        let histogram = self.histogram.snapshot_and_reset();
+        if histogram.is_empty() {
+            None
+        } else {
+            Some(histogram)
+        }
     }
 }
 

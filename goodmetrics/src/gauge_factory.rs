@@ -7,8 +7,9 @@ use std::{
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
 use crate::{
+    gauge::{Gauge, HistogramHandle, StatisticSetHandle, SumHandle},
     pipeline::{AggregatedMetricsMap, AggregationBatcher},
-    Gauge, GaugeDimensions, GaugeGroup, Name,
+    GaugeDimensions, GaugeGroup, Name,
 };
 
 /// The default gauge factory. You should use this unless you have some fancy multi-factory setup.
@@ -33,60 +34,118 @@ impl GaugeFactory {
     ///
     /// Gauges are aggregated as StatisticSet and passed to your downstream collector.
     ///
-    /// You should cache the gauge that this function gives you. Gauges are threadsafe and fully non-blocking,
-    /// but their registration and lifecycle are governed by Mutex.
+    /// Cache the handle: Registration is guarded by a central mutex, and cloning the handle is cheap.
     ///
-    /// Gauges are less flexible than Metrics, but they can enable convenient high frequency recording.
+    /// It is an error to use a gauge with the same group and name but different handle type.
     pub fn gauge_statistic_set(
         &self,
         gauge_group: impl Into<Name>,
         gauge_name: impl Into<Name>,
-    ) -> Arc<Gauge> {
+    ) -> StatisticSetHandle {
         self.dimensioned_gauge_statistic_set(gauge_group, gauge_name, Default::default())
     }
 
     /// Get a gauge within a group, of a particular name, with specified dimensions.
+    ///
+    /// StatisticSets are backed by lightweight platform atomics. They are very fast.
+    ///
+    /// Cache the handle: Registration is guarded by a central mutex, and cloning the handle is cheap.
+    ///
+    /// It is an error to use a gauge with the same group and name but different handle type.
     pub fn dimensioned_gauge_statistic_set(
         &self,
         gauge_group: impl Into<Name>,
         gauge_name: impl Into<Name>,
         gauge_dimensions: GaugeDimensions,
-    ) -> Arc<Gauge> {
-        self.get_gauge(
-            gauge_group,
-            gauge_name,
-            gauge_dimensions,
-            crate::gauge::statistic_set_gauge,
-        )
+    ) -> StatisticSetHandle {
+        StatisticSetHandle {
+            gauge: self.get_gauge(
+                gauge_group,
+                gauge_name,
+                gauge_dimensions,
+                crate::gauge::statistic_set_gauge,
+            ),
+        }
     }
 
     /// Get a gauge within a group, of a particular name, with specified dimensions.
+    ///
+    /// Sums are backed by lightweight platform atomics. They are very fast.
+    ///
+    /// Cache the handle: Registration is guarded by a central mutex, and cloning the handle is cheap.
+    ///
+    /// It is an error to use a gauge with the same group and name but different handle type.
     pub fn dimensioned_gauge_sum(
         &self,
         gauge_group: impl Into<Name>,
         gauge_name: impl Into<Name>,
         gauge_dimensions: GaugeDimensions,
-    ) -> Arc<Gauge> {
-        self.get_gauge(
-            gauge_group,
-            gauge_name,
-            gauge_dimensions,
-            crate::gauge::sum_gauge,
-        )
+    ) -> SumHandle {
+        SumHandle {
+            gauge: self.get_gauge(
+                gauge_group,
+                gauge_name,
+                gauge_dimensions,
+                crate::gauge::sum_gauge,
+            ),
+        }
     }
 
-    fn get_gauge(
+    /// Get a histogram gauge within a group, of a particular name, with specified dimensions.
+    ///
+    /// Histograms are controlled by Mutex. Math is done under a lock, so they are slower than StatisticSets. They are still quick, but measure the impact if you care.
+    ///
+    /// Cache the handle: Registration is guarded by a central mutex, and cloning the handle is cheap.
+    ///
+    /// It is an error to use a gauge with the same group and name but different handle type.
+    ///
+    /// ```
+    /// # use goodmetrics::{GaugeFactory, default_gauge_factory};
+    /// # use goodmetrics::GaugeDimensions;
+    /// # use std::time::Duration;
+    /// let histogram = default_gauge_factory().dimensioned_gauge_histogram(
+    ///     "environment",
+    ///     "sleep_latency",
+    ///     GaugeDimensions::new([("operating_system", "example")])
+    /// );
+    ///
+    /// // Record a histogram of how much time it actually takes to sleep 1 nanosecond on this machine.
+    /// for _ in 0..10000 {
+    ///    let _time_guard = histogram.time();
+    ///     std::thread::sleep(Duration::from_nanos(1));
+    /// }
+    /// ```
+    pub fn dimensioned_gauge_histogram(
         &self,
         gauge_group: impl Into<Name>,
         gauge_name: impl Into<Name>,
         gauge_dimensions: GaugeDimensions,
-        default: fn() -> Gauge,
-    ) -> Arc<Gauge> {
+    ) -> HistogramHandle {
+        HistogramHandle {
+            gauge: self.get_gauge(
+                gauge_group,
+                gauge_name,
+                gauge_dimensions,
+                crate::gauge::histogram_gauge,
+            ),
+        }
+    }
+
+    fn get_gauge<T>(
+        &self,
+        gauge_group: impl Into<Name>,
+        gauge_name: impl Into<Name>,
+        gauge_dimensions: GaugeDimensions,
+        default: fn() -> T,
+    ) -> Arc<Gauge>
+    where
+        T: Into<Gauge>,
+    {
+        let gauge_group = gauge_group.into();
         let mut locked_groups = self
             .gauge_groups
             .lock()
             .expect("local mutex should not be poisoned");
-        let gauge_group = gauge_group.into();
         match locked_groups.get_mut(&gauge_group) {
             Some(group) => group.dimensioned_gauge(gauge_name, gauge_dimensions.into(), default),
             None => {
@@ -191,6 +250,15 @@ mod test {
             "dimensioned_gauge_two",
             dimensions.clone(),
         );
+        let dimensioned_histogram = gauge_factory.dimensioned_gauge_histogram(
+            "test_dimensioned_gauges",
+            "a histogram",
+            dimensions.clone(),
+        );
+        {
+            let _time_guard = dimensioned_histogram.time();
+            std::thread::sleep(Duration::from_micros(1)); // I didn't mock time, but I just want a nonzero duration.
+        }
         let _unused_gauge_in_gauge_group = gauge_factory.dimensioned_gauge_statistic_set(
             "test_dimensioned_gauges",
             "unused_gauge",
@@ -213,7 +281,7 @@ mod test {
             BatchTaker,
         ));
 
-        let result = receiver.recv().await.expect("should have received metrics");
+        let mut result = receiver.recv().await.expect("should have received metrics");
         assert_eq!(
             HashSet::from([
                 &Name::from("test_gauges"),
@@ -241,37 +309,133 @@ mod test {
         );
 
         let dimensioned_gauges_result = result
-            .get(&Name::from("test_dimensioned_gauges"))
+            .remove(&Name::from("test_dimensioned_gauges"))
             .expect("should have found data for gauge group `test_dimensioned_gauges`");
 
         assert_eq!(
-            &HashMap::from([(
-                BTreeMap::from([
-                    (Name::from("test"), Dimension::from("dimension")),
-                    (Name::from("other"), Dimension::from(1_u32)),
-                ]),
-                HashMap::from([
-                    (
-                        Name::from("dimensioned_gauge_one"),
-                        Aggregation::StatisticSet(StatisticSet {
-                            min: 100,
-                            max: 100,
-                            sum: 100,
-                            count: 1,
-                        })
-                    ),
-                    (
-                        Name::from("dimensioned_gauge_two"),
-                        Aggregation::StatisticSet(StatisticSet {
-                            min: 10,
-                            max: 10,
-                            sum: 10,
-                            count: 1,
-                        })
-                    ),
-                ])
-            ),]),
             dimensioned_gauges_result
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![BTreeMap::from([
+                (Name::from("test"), Dimension::from("dimension")),
+                (Name::from("other"), Dimension::from(1_u32)),
+            ])],
+            "there should only be 1 dimension position in this aggregated map"
+        );
+
+        let mut aggregation_map = dimensioned_gauges_result
+            .into_values()
+            .next()
+            .expect("There was a dimension position");
+        assert_eq!(
+            aggregation_map.remove(&Name::from("dimensioned_gauge_one")),
+            Some(Aggregation::StatisticSet(StatisticSet {
+                min: 100,
+                max: 100,
+                sum: 100,
+                count: 1,
+            }))
+        );
+        assert_eq!(
+            aggregation_map.remove(&Name::from("dimensioned_gauge_two")),
+            Some(Aggregation::StatisticSet(StatisticSet {
+                min: 10,
+                max: 10,
+                sum: 10,
+                count: 1,
+            }))
+        );
+        let histogram = aggregation_map
+            .remove(&Name::from("a histogram"))
+            .expect("a histogram should be in the map");
+        match histogram {
+            Aggregation::ExponentialHistogram(histogram) => {
+                let value_counts = histogram
+                    .value_counts()
+                    .filter(|(_, count)| *count != 0)
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    value_counts.len(),
+                    1,
+                    "there should be 1 value in the histogram"
+                );
+                let (bucket_value, count) = value_counts[0];
+                assert_eq!(count, 1, "the count should be 1");
+                assert!(
+                    (1.0..=1000000000.0).contains(&bucket_value),
+                    "the bucket value should sensical, but was {bucket_value}"
+                );
+            }
+            _ => panic!("expected histogram"),
+        }
+        assert_eq!(
+            aggregation_map.len(),
+            0,
+            "all gauges should have been removed from the map"
+        );
+
+        // Now wait for the next interval, where we should have no data. This means goodmetrics is reporting sparse data.
+        let result = receiver.recv().await.expect("should have received metrics");
+        assert_eq!(
+            HashMap::from([]),
+            result,
+            "Nothing was reported in the last interval, so the gauges should be empty."
+        );
+
+        // Now report a timer and make sure the next interval has the data
+        {
+            dimensioned_histogram.time();
+            std::thread::sleep(Duration::from_micros(1));
+        }
+        let mut result = receiver.recv().await.expect("should have received metrics");
+        let dimensioned_gauges_result = result
+            .remove(&Name::from("test_dimensioned_gauges"))
+            .expect("should have found data for gauge group `test_dimensioned_gauges`");
+
+        assert_eq!(
+            dimensioned_gauges_result
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![BTreeMap::from([
+                (Name::from("test"), Dimension::from("dimension")),
+                (Name::from("other"), Dimension::from(1_u32)),
+            ])],
+            "there should only be 1 dimension position in this aggregated map"
+        );
+
+        let mut aggregation_map = dimensioned_gauges_result
+            .into_values()
+            .next()
+            .expect("There was a dimension position");
+        let histogram = aggregation_map
+            .remove(&Name::from("a histogram"))
+            .expect("a histogram should be in the map");
+        match histogram {
+            Aggregation::ExponentialHistogram(histogram) => {
+                let value_counts = histogram
+                    .value_counts()
+                    .filter(|(_, count)| *count != 0)
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    value_counts.len(),
+                    1,
+                    "there should be 1 value in the histogram"
+                );
+                let (bucket_value, count) = value_counts[0];
+                assert_eq!(count, 1, "the count should be 1");
+                assert!(
+                    (1.0..=1000000000.0).contains(&bucket_value),
+                    "the bucket value should sensical, but was {bucket_value}"
+                );
+            }
+            _ => panic!("expected histogram"),
+        }
+        assert_eq!(
+            aggregation_map.len(),
+            0,
+            "all gauges should have been removed from the map"
         );
     }
 }

@@ -8,4 +8,4 @@ pub use introspection_factory::run_introspection_metrics;
 pub use introspection_factory::IntrospectionConfiguration;
 
 pub(crate) use introspection_factory::introspection_factory;
-pub(crate) use lazy_gauge::LazyGauge;
+pub(crate) use lazy_gauge::LazySumGauge;

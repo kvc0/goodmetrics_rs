@@ -4,6 +4,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use exponential_histogram::ExponentialHistogram;
 use futures::{Stream, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -11,8 +12,7 @@ use tonic::metadata::AsciiMetadataValue;
 
 use crate::{
     aggregation::{
-        AbsorbDistribution, Aggregation, Centroid, ExponentialHistogram, Histogram, OnlineTdigest,
-        StatisticSet,
+        AbsorbDistribution, Aggregation, Centroid, Histogram, OnlineTdigest, StatisticSet,
     },
     pipeline::{AggregatedMetricsMap, AggregationBatcher, DimensionedMeasurementsMap},
     proto::{

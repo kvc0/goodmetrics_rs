@@ -1,7 +1,6 @@
 //! Types for working with in-memory local aggregations
 
 mod bucket;
-mod exponential_histogram;
 mod histogram;
 mod online_tdigest;
 mod statistic_set;
@@ -10,7 +9,7 @@ mod sum;
 mod tdigest;
 
 pub(crate) use bucket::bucket_10_below_2_sigfigs;
-pub use exponential_histogram::ExponentialHistogram;
+use exponential_histogram::ExponentialHistogram;
 pub use histogram::Histogram;
 pub use online_tdigest::OnlineTdigest;
 pub use statistic_set::StatisticSet;
@@ -108,5 +107,24 @@ impl AbsorbDistribution for OnlineTdigest {
                 self.observe_mut(nanos.load(std::sync::atomic::Ordering::Acquire) as f64)
             }
         };
+    }
+}
+
+impl AbsorbDistribution for ExponentialHistogram {
+    fn absorb(&mut self, distribution: crate::types::Distribution) {
+        match distribution {
+            Distribution::I64(i) => self.accumulate(i as f64),
+            Distribution::I32(i) => self.accumulate(i),
+            Distribution::U64(u) => self.accumulate(u as f64),
+            Distribution::U32(u) => self.accumulate(u),
+            Distribution::Collection(c) => {
+                for i in c {
+                    self.accumulate(i as f64)
+                }
+            }
+            Distribution::Timer { nanos } => {
+                self.accumulate(nanos.load(std::sync::atomic::Ordering::Relaxed) as f64)
+            }
+        }
     }
 }

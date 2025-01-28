@@ -3,8 +3,11 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use crate::pipeline::{DimensionedMeasurementsMap, MeasurementAggregationMap};
-use crate::{aggregation::Aggregation, Gauge};
+use crate::aggregation::Aggregation;
+use crate::{
+    gauge::Gauge,
+    pipeline::{DimensionedMeasurementsMap, MeasurementAggregationMap},
+};
 use crate::{pipeline::DimensionPosition, types::Name};
 
 /// Gauges grouped by a shared dimension position
@@ -15,25 +18,28 @@ pub struct GaugeGroup {
 
 impl GaugeGroup {
     /// Put get a shared gauge reference
-    pub(crate) fn dimensioned_gauge(
+    pub(crate) fn dimensioned_gauge<T>(
         &mut self,
         name: impl Into<Name>,
         dimensions: DimensionPosition,
-        default: fn() -> Gauge,
-    ) -> Arc<Gauge> {
+        default: fn() -> T,
+    ) -> Arc<Gauge>
+    where
+        T: Into<Gauge>,
+    {
         let name = name.into();
         let gauge_position = self.dimensioned_gauges.entry(dimensions).or_default();
         match gauge_position.get(&name) {
             Some(existing) => match existing.upgrade() {
                 Some(existing) => existing,
                 None => {
-                    let gauge: Arc<Gauge> = Arc::new(default());
+                    let gauge: Arc<Gauge> = Arc::new(default().into());
                     gauge_position.insert(name, Arc::downgrade(&gauge));
                     gauge
                 }
             },
             None => {
-                let gauge: Arc<Gauge> = Arc::new(default());
+                let gauge: Arc<Gauge> = Arc::new(default().into());
                 gauge_position.insert(name, Arc::downgrade(&gauge));
                 gauge
             }
@@ -63,6 +69,14 @@ impl GaugeGroup {
                                 Gauge::Sum(gauge) => gauge
                                     .reset()
                                     .map(|sum| (name.to_owned(), Aggregation::Sum(sum))),
+                                Gauge::Histogram(histogram_gauge) => {
+                                    histogram_gauge.reset().map(|histogram| {
+                                        (
+                                            name.to_owned(),
+                                            Aggregation::ExponentialHistogram(histogram),
+                                        )
+                                    })
+                                }
                             })
                     })
                     .collect();

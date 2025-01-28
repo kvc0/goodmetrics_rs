@@ -5,11 +5,19 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use exponential_histogram::ExponentialHistogram;
 use futures::{Stream, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::metadata::AsciiMetadataValue;
 
+use crate::{
+    aggregation::Histogram,
+    pipeline::AggregatedMetricsMap,
+    proto::opentelemetry::metrics::v1::{
+        exponential_histogram_data_point::Buckets, ExponentialHistogramDataPoint,
+    },
+};
 use crate::{
     aggregation::Sum,
     pipeline::AggregationBatcher,
@@ -30,13 +38,6 @@ use crate::{
         },
     },
     types::{Dimension, Name},
-};
-use crate::{
-    aggregation::{ExponentialHistogram, Histogram},
-    pipeline::AggregatedMetricsMap,
-    proto::opentelemetry::metrics::v1::{
-        exponential_histogram_data_point::Buckets, ExponentialHistogramDataPoint,
-    },
 };
 
 use super::{EpochTime, StdError};
@@ -488,12 +489,23 @@ fn as_otel_histogram(
 }
 
 fn as_otel_exponential_histogram(
-    mut exponential_histogram: ExponentialHistogram,
+    exponential_histogram: ExponentialHistogram,
     timestamp: SystemTime,
     duration: Duration,
     attributes: Vec<KeyValue>,
 ) -> opentelemetry::metrics::v1::ExponentialHistogram {
     let timestamp_nanos = timestamp.nanos_since_epoch();
+    let count = exponential_histogram.count() as u64;
+    let sum = if exponential_histogram.has_negatives() {
+        0_f64
+    } else {
+        exponential_histogram.sum()
+    };
+    let min = exponential_histogram.min();
+    let max = exponential_histogram.max();
+    let scale = exponential_histogram.scale() as i32;
+    let bucket_start_offset = exponential_histogram.bucket_start_offset() as i32;
+    let (positives, negatives) = exponential_histogram.take_counts();
 
     opentelemetry::metrics::v1::ExponentialHistogram {
         aggregation_temporality: THE_ACTUAL_TEMPORALITY,
@@ -501,33 +513,21 @@ fn as_otel_exponential_histogram(
             attributes,
             start_time_unix_nano: timestamp_nanos - duration.as_nanos() as u64,
             time_unix_nano: timestamp_nanos,
-            count: exponential_histogram.count() as u64,
-            sum: if exponential_histogram.has_negatives() {
-                0_f64
-            } else {
-                exponential_histogram.sum()
-            },
+            count,
+            sum,
             exemplars: vec![],                      // just no.
             flags: DataPointFlags::FlagNone as u32, // i don't send useless buckets
-            min: exponential_histogram.min(),       // just use the histogram...
-            max: exponential_histogram.max(),       // just use the histogram...
-            scale: exponential_histogram.scale() as i32,
+            min,
+            max,
+            scale,
             zero_count: 0, // I don't do this yet
             positive: Some(Buckets {
-                offset: exponential_histogram.bucket_start_offset() as i32,
-                bucket_counts: exponential_histogram
-                    .take_positives()
-                    .into_iter()
-                    .map(|u| u as u64)
-                    .collect(),
+                offset: bucket_start_offset,
+                bucket_counts: positives.into_iter().map(|u| u as u64).collect(),
             }),
             negative: Some(Buckets {
-                offset: exponential_histogram.bucket_start_offset() as i32,
-                bucket_counts: exponential_histogram
-                    .take_negatives()
-                    .into_iter()
-                    .map(|u| u as u64)
-                    .collect(),
+                offset: bucket_start_offset,
+                bucket_counts: negatives.into_iter().map(|u| u as u64).collect(),
             }),
         }],
     }

@@ -13,7 +13,7 @@ fn main() {
         .build_server(false)
         .type_attribute(".", "#[derive()]")
         .out_dir(out_dir.clone())
-        .compile(
+        .compile_protos(
             &[format!("{proto_dir}/metrics/goodmetrics.proto")],
             &[proto_dir],
         )
@@ -26,7 +26,7 @@ fn main() {
         .type_attribute("Buckets", "#[derive(Eq)]")
         .type_attribute("ExportMetricsServiceResponse", "#[derive(Eq)]")
         .out_dir(out_dir)
-        .compile(
+        .compile_protos(
             &[
                 format!("{proto_dir}/opentelemetry/proto/metrics/v1/metrics.proto"),
                 format!(

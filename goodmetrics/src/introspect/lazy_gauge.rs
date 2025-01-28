@@ -1,29 +1,24 @@
-use std::sync::Arc;
-
-use arc_swap::ArcSwapOption;
-
-use crate::{Gauge, Name};
+use crate::{gauge::SumHandle, Name};
 
 use super::introspection_factory;
 
-pub(crate) struct LazyGauge {
+pub(crate) struct LazySumGauge {
     name: Name,
-    gauge: ArcSwapOption<Gauge>,
+    gauge: std::sync::OnceLock<Option<SumHandle>>,
 }
 
-impl LazyGauge {
-    pub(crate) const fn new(name: Name) -> LazyGauge {
+impl LazySumGauge {
+    pub(crate) const fn new(name: Name) -> LazySumGauge {
         Self {
             name,
-            gauge: ArcSwapOption::const_empty(),
+            gauge: std::sync::OnceLock::new(),
         }
     }
 }
 
-impl LazyGauge {
-    pub(crate) fn gauge(&self) -> Option<Arc<Gauge>> {
-        let gauge_guard = self.gauge.load();
-        if gauge_guard.is_none() {
+impl LazySumGauge {
+    pub(crate) fn gauge(&self) -> &Option<SumHandle> {
+        self.gauge.get_or_init(|| {
             let factory_guard = introspection_factory();
             match factory_guard.as_ref() {
                 Some(factory) => {
@@ -33,19 +28,10 @@ impl LazyGauge {
                         self.name.clone(),
                         Default::default(),
                     );
-                    self.gauge.store(Some(gauge.clone()));
                     Some(gauge)
                 }
                 None => None,
             }
-        } else {
-            match gauge_guard.as_ref() {
-                Some(gauge) => Some(gauge.clone()),
-                None => {
-                    log::error!("this was checked for none");
-                    None
-                }
-            }
-        }
+        })
     }
 }

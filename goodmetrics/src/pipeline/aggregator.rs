@@ -6,6 +6,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
+use exponential_histogram::ExponentialHistogram;
 use tokio::sync::mpsc;
 
 use crate::{
@@ -14,9 +15,7 @@ use crate::{
     types::{self, Dimension, Measurement, Name},
 };
 
-use crate::aggregation::{
-    AbsorbDistribution, Aggregation, ExponentialHistogram, Histogram, OnlineTdigest, StatisticSet,
-};
+use crate::aggregation::{AbsorbDistribution, Aggregation, Histogram, OnlineTdigest, StatisticSet};
 
 /// User-named metrics
 pub type AggregatedMetricsMap = HashMap<Name, DimensionedMeasurementsMap>;
