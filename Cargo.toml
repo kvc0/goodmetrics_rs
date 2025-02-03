@@ -7,7 +7,7 @@ members = [
 ]
 
 [workspace.package]
-version = "7.0.0"
+version = "7.0.1"
 authors = ["kvc0"]
 repository = "https://github.com/kvc0/goodmetrics_rs"
 edition = "2021"
