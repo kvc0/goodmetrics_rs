@@ -143,6 +143,7 @@ impl HistogramHandle {
 }
 
 /// A guard that observes the time since it was created when dropped.
+#[derive(Debug)]
 pub struct TimeGuard {
     start: Instant,
     gauge: HistogramHandle,
