@@ -11,7 +11,7 @@ use super::StdError;
 /// Type alias for internal channel type
 pub type ChannelType = hyper_util::client::legacy::Client<
     hyper_rustls::HttpsConnector<HttpConnector>,
-    tonic::body::BoxBody,
+    tonic::body::Body,
 >;
 
 /// You can make an insecure connection by passing `|| { None }` to tls_trust.
@@ -117,7 +117,7 @@ impl ServerCertVerifier for StupidVerifier {
     }
 
     fn supported_verify_schemes(&self) -> Vec<tokio_rustls::rustls::SignatureScheme> {
-        tokio_rustls::rustls::crypto::ring::default_provider()
+        tokio_rustls::rustls::crypto::aws_lc_rs::default_provider()
             .signature_verification_algorithms
             .supported_schemes()
     }

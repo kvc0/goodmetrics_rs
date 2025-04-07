@@ -61,7 +61,7 @@ const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
 impl<TChannel> OpenTelemetryDownstream<TChannel>
 where
-    TChannel: tonic::client::GrpcService<tonic::body::BoxBody>,
+    TChannel: tonic::client::GrpcService<tonic::body::Body>,
     TChannel::Error: Into<StdError>,
     TChannel::ResponseBody: http_body::Body<Data = bytes::Bytes> + Send + 'static,
     <TChannel::ResponseBody as http_body::Body>::Error: Into<StdError> + Send,
