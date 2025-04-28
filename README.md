@@ -8,7 +8,7 @@ To use any grpc downstream (goodmetrics or opentelemetry) you will need a tokio 
 
 ## How to use
 
-See [the lightstep demo](./src/benches/lightstep.rs) for a complete setup and usage example with opentelemetry.
+See [the lightstep demo](./goodmetrics/benches/lightstep.rs) for a complete setup and usage example with opentelemetry.
 
 ### Simple example
 
