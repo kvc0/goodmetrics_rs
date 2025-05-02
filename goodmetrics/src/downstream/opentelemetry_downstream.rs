@@ -70,12 +70,30 @@ where
     pub fn new(
         client: MetricsServiceClient<TChannel>,
         header: Option<(&'static str, AsciiMetadataValue)>,
-        shared_dimensions: Option<DimensionPosition>,
     ) -> Self {
         OpenTelemetryDownstream {
             client,
             header,
-            shared_dimensions: shared_dimensions.map(as_otel_dimensions),
+            shared_dimensions: None,
+        }
+    }
+
+    /// Create a new opentelemetry metrics sender from a grpc channel, with a set of dimensions applied
+    /// to all metrics sent through it.
+    pub fn new_with_dimensions(
+        client: MetricsServiceClient<TChannel>,
+        header: Option<(&'static str, AsciiMetadataValue)>,
+        shared_dimensions: impl IntoIterator<Item = (impl Into<Name>, impl Into<Dimension>)>,
+    ) -> Self {
+        OpenTelemetryDownstream {
+            client,
+            header,
+            shared_dimensions: Some(as_otel_dimensions(
+                shared_dimensions
+                    .into_iter()
+                    .map(|(n, d)| (n.into(), d.into()))
+                    .collect::<DimensionPosition>(),
+            )),
         }
     }
 
@@ -558,7 +576,7 @@ mod test {
         let client = get_client("localhost:6379", || None, MetricsServiceClient::with_origin)
             .expect("I can make ");
 
-        let downstream = OpenTelemetryDownstream::new(client, None, None);
+        let downstream = OpenTelemetryDownstream::new(client, None);
 
         let metrics_tasks = tokio::task::LocalSet::new();
 

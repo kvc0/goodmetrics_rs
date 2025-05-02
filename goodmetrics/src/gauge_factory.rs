@@ -15,6 +15,43 @@ use crate::{
 /// The default gauge factory. You should use this unless you have some fancy multi-factory setup.
 ///
 /// Remember to report_gauges_forever() at the start of your program if you use this factory.
+/// ________
+/// Configuration:
+/// ```rust
+/// # use goodmetrics::{GaugeFactory, default_gauge_factory};
+/// # use goodmetrics::downstream::{get_client, OpenTelemetryDownstream, OpentelemetryBatcher};
+/// # use goodmetrics::proto::opentelemetry::collector::metrics::v1::metrics_service_client::MetricsServiceClient;
+/// # use tokio_rustls::rustls::RootCertStore;
+/// # use std::time::Duration;
+/// // Call at the start of your program
+/// fn set_up_default_gauge_factory() {
+///     // 1. Configure your delivery destination:
+///     let downstream = OpenTelemetryDownstream::new(
+///         get_client(
+///             "https://ingest.example.com",
+///             || Some(RootCertStore {
+///                 roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+///             }),
+///             MetricsServiceClient::with_origin,
+///         ).expect("i can make a channel to ingest.example.com"),
+///         Some(("authorization", "token".parse().expect("must be able to parse header"))),
+///         Some([("application", "example"), ("version", env!("CARGO_PKG_VERSION"))]),
+///     );
+///
+///     // 2. Connect the downstream to the gauge factory:
+///     let (aggregated_batch_sender, aggregated_batch_receiver) = tokio::sync::mpsc::channel(128);
+///     tokio::task::spawn(downstream.send_batches_forever(aggregated_batch_receiver));
+///     tokio::task::spawn(
+///         default_gauge_factory()
+///             .clone()
+///             .report_gauges_forever(
+///                 Duration::from_secs(10),
+///                 aggregated_batch_sender,
+///                 OpentelemetryBatcher,
+///             )
+///     );
+/// }
+/// ```
 pub fn default_gauge_factory() -> &'static GaugeFactory {
     static DEFAULT_GAUGE_FACTORY: LazyLock<GaugeFactory> = LazyLock::new(GaugeFactory::default);
 

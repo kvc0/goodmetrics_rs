@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::time::Duration;
 
 use criterion::Criterion;
@@ -10,7 +9,6 @@ use goodmetrics::{
     pipeline::{Aggregator, DistributionMode},
     MetricsFactory,
 };
-use goodmetrics::{Dimension, Name};
 use tokio::join;
 use tokio::sync::mpsc;
 use tokio_rustls::rustls::RootCertStore;
@@ -42,7 +40,7 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
                 goodmetrics::proto::opentelemetry::collector::metrics::v1::metrics_service_client::MetricsServiceClient::with_origin,
             )
             .expect("i can make a channel to lightstep");
-            let downstream = OpenTelemetryDownstream::new(
+            let downstream = OpenTelemetryDownstream::new_with_dimensions(
                 channel,
                 Some((
                     "lightstep-access-token",
@@ -51,10 +49,10 @@ pub fn lightstep_demo(criterion: &mut Criterion) {
                         .parse()
                         .expect("must be headerizable")
                 )),
-                Some(BTreeMap::from_iter(vec![(
-                    Name::from("name"),
-                    Dimension::from("value i guess"),
-                )])),
+                [(
+                    "name",
+                    "value i guess",
+                )],
             );
 
             let _ = join!(
