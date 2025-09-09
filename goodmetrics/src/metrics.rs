@@ -132,12 +132,18 @@ where
     /// Record a dimension name and value pair - last write per metrics object wins!
     #[inline]
     pub fn dimension(&mut self, name: impl Into<Name>, value: impl Into<Dimension>) {
+        if self.has_behavior(MetricsBehavior::Suppress) {
+            return;
+        }
         self.dimensions.insert(name.into(), value.into());
     }
 
     /// Record a measurement name and value pair - last write per metrics object wins!
     #[inline]
     pub fn measurement(&mut self, name: impl Into<Name>, value: impl Into<Observation>) {
+        if self.has_behavior(MetricsBehavior::Suppress) {
+            return;
+        }
         self.measurements
             .insert(name.into(), Measurement::Observation(value.into()));
     }
@@ -146,6 +152,9 @@ where
     /// Check out t-digests if you're using a goodmetrics + timescale downstream.
     #[inline]
     pub fn distribution(&mut self, name: impl Into<Name>, value: impl Into<Distribution>) {
+        if self.has_behavior(MetricsBehavior::Suppress) {
+            return;
+        }
         self.measurements
             .insert(name.into(), Measurement::Distribution(value.into()));
     }
@@ -155,6 +164,9 @@ where
     /// Aggregation: Locally summed per report period.
     #[inline]
     pub fn sum(&mut self, name: impl Into<Name>, value: impl Into<i64>) {
+        if self.has_behavior(MetricsBehavior::Suppress) {
+            return;
+        }
         let value = value.into();
         self.measurements
             .entry(name.into())
@@ -175,12 +187,14 @@ where
     #[inline]
     pub fn time(&mut self, timer_name: impl Into<Name>) -> Timer {
         let timer = Arc::new(AtomicUsize::new(0));
-        self.measurements.insert(
-            timer_name.into(),
-            Measurement::Distribution(Distribution::Timer {
-                nanos: timer.clone(),
-            }),
-        );
+        if !self.has_behavior(MetricsBehavior::Suppress) {
+            self.measurements.insert(
+                timer_name.into(),
+                Measurement::Distribution(Distribution::Timer {
+                    nanos: timer.clone(),
+                }),
+            );
+        }
         Timer::new(timer)
     }
 
@@ -191,7 +205,9 @@ where
         default: impl Into<Dimension>,
     ) -> DimensionGuard {
         let (guard, dimension) = DimensionGuard::new(name.into(), default.into());
-        self.dimension_guards.push(dimension);
+        if !self.has_behavior(MetricsBehavior::Suppress) {
+            self.dimension_guards.push(dimension);
+        }
         guard
     }
 
