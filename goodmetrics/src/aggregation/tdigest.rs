@@ -187,7 +187,7 @@ impl TDigest {
     }
 
     #[inline]
-    pub(crate) fn drain_centroids(&mut self) -> std::vec::Drain<Centroid> {
+    pub(crate) fn drain_centroids(&mut self) -> std::vec::Drain<'_, Centroid> {
         self.centroids.drain(0..self.centroids.len())
     }
 
