@@ -26,7 +26,7 @@ use crate::{
 /// // Call at the start of your program
 /// fn set_up_default_gauge_factory() {
 ///     // 1. Configure your delivery destination:
-///     let downstream = OpenTelemetryDownstream::new(
+///     let downstream = OpenTelemetryDownstream::new_with_dimensions(
 ///         get_client(
 ///             "https://ingest.example.com",
 ///             || Some(RootCertStore {
@@ -35,7 +35,7 @@ use crate::{
 ///             MetricsServiceClient::with_origin,
 ///         ).expect("i can make a channel to ingest.example.com"),
 ///         Some(("authorization", "token".parse().expect("must be able to parse header"))),
-///         Some([("application", "example"), ("version", env!("CARGO_PKG_VERSION"))]),
+///         vec![("application", "example"), ("version", env!("CARGO_PKG_VERSION"))],
 ///     );
 ///
 ///     // 2. Connect the downstream to the gauge factory:
