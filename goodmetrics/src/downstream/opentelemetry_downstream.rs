@@ -9,7 +9,7 @@ use exponential_histogram::ExponentialHistogram;
 use futures::{Stream, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::metadata::AsciiMetadataValue;
+use tonic::metadata::{AsciiMetadataKey, AsciiMetadataValue};
 
 use crate::{
     aggregation::Histogram,
@@ -53,7 +53,7 @@ const THE_ACTUAL_TEMPORALITY: i32 = AggregationTemporality::Delta as i32;
 /// only their protos. All your measurements will be Delta temporality.
 pub struct OpenTelemetryDownstream<TChannel> {
     client: MetricsServiceClient<TChannel>,
-    header: Option<(&'static str, AsciiMetadataValue)>,
+    header: Option<(AsciiMetadataKey, AsciiMetadataValue)>,
     shared_dimensions: Option<Vec<KeyValue>>,
 }
 
@@ -69,11 +69,11 @@ where
     /// Create a new opentelemetry metrics sender from a grpc channel
     pub fn new(
         client: MetricsServiceClient<TChannel>,
-        header: Option<(&'static str, AsciiMetadataValue)>,
+        header: Option<(impl Into<String>, AsciiMetadataValue)>,
     ) -> Self {
         OpenTelemetryDownstream {
             client,
-            header,
+            header: header.map(|(k, v)| (k.into().parse().expect("header name must be valid"), v)),
             shared_dimensions: None,
         }
     }
@@ -82,12 +82,12 @@ where
     /// to all metrics sent through it.
     pub fn new_with_dimensions(
         client: MetricsServiceClient<TChannel>,
-        header: Option<(&'static str, AsciiMetadataValue)>,
+        header: Option<(impl Into<String>, AsciiMetadataValue)>,
         shared_dimensions: impl IntoIterator<Item = (impl Into<Name>, impl Into<Dimension>)>,
     ) -> Self {
         OpenTelemetryDownstream {
             client,
-            header,
+            header: header.map(|(k, v)| (k.into().parse().expect("header name must be valid"), v)),
             shared_dimensions: Some(as_otel_dimensions(
                 shared_dimensions
                     .into_iter()
@@ -155,7 +155,7 @@ where
     fn request<T>(&self, request: T) -> tonic::Request<T> {
         let mut request = tonic::Request::new(request);
         if let Some((header, value)) = self.header.as_ref() {
-            request.metadata_mut().insert(*header, value.clone());
+            request.metadata_mut().insert(header.clone(), value.clone());
         }
         request
     }
@@ -556,6 +556,7 @@ mod test {
     use std::time::Duration;
 
     use tokio::sync::mpsc;
+    use tonic::metadata::AsciiMetadataValue;
 
     use crate::{
         downstream::{
@@ -576,7 +577,8 @@ mod test {
         let client = get_client("localhost:6379", || None, MetricsServiceClient::with_origin)
             .expect("I can make ");
 
-        let downstream = OpenTelemetryDownstream::new(client, None);
+        let downstream =
+            OpenTelemetryDownstream::new(client, Option::<(&str, AsciiMetadataValue)>::None);
 
         let metrics_tasks = tokio::task::LocalSet::new();
 

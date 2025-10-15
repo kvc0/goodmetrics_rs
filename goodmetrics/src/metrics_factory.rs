@@ -231,7 +231,7 @@ impl<TMetricsAllocator, TSink> MetricsFactory<TMetricsAllocator, TSink> {
             allocator,
             default_metrics_behavior: behaviors
                 .iter()
-                .fold(0, |i, behavior| (i | (*behavior as u32))),
+                .fold(0, |i, behavior| i | (*behavior as u32)),
             sink,
             disabled: false,
         }
